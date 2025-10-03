@@ -1199,6 +1199,8 @@ class Filter:
         if memories:
             final_memories, reranking_info = await self._llm_reranking_service.rerank_memories(user_message, memories, emitter)
         else:
+            logger.info("📭 No relevant memories found above similarity threshold")
+            await self._emit_status(emitter, "📭 No Relevant Memories Found", done=True)
             final_memories = memories
             reranking_info = {"llm_decision": False, "decision_reason": "no_candidates"}
 
