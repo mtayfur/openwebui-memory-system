@@ -354,6 +354,29 @@ class SkipDetector:
         "abstract question about technical comparisons differences or theoretical computer science concepts without personal learning context",
     ]
     
+    META_CONVERSATION_CATEGORY_DESCRIPTIONS = [
+        "acknowledgment response like thanks for the help got it I understand makes sense that is helpful appreciate it",
+        "greeting conversation like hello how are you doing today nice to meet you good morning have a nice day",
+        "polite filler like please excuse me sorry to bother you hope you are well no worries all good",
+        "agreement confirmation like yes that is correct absolutely I agree with you exactly right you are correct indeed",
+        "farewell closing like goodbye see you later talk soon have a good day take care bye",
+    ]
+    
+    FACTUAL_QUERY_CATEGORY_DESCRIPTIONS = [
+        "definition question asking what is something what does term mean explain concept without personal context or situation",
+        "factual information request about dates events history geography science without personal relevance application or learning goal",
+        "general how-to question asking for instructions steps process recipe without mentioning personal needs circumstances or projects",
+        "theoretical explanation request about why how things work in general abstract concepts without personal application or career context",
+        "comparison question asking differences between options technologies concepts without stating personal preference situation or decision",
+    ]
+    
+    OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS = [
+        "instruction to format output as JSON YAML CSV table list markdown code block or specific data structure",
+        "request to adjust response style length like make it shorter longer simpler more detailed use bullet points numbered list",
+        "command to rewrite rephrase translate summarize previous response output or answer differently",
+        "request to change tone presentation like be more formal casual technical professional explain like I am five years old",
+    ]
+    
     CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
         "statement about family members by name mentioning spouse children parents siblings or relatives with specific names or roles",
         "expression of lasting personal feelings emotions core preferences values beliefs or dislikes about life situations",
@@ -374,10 +397,16 @@ class SkipDetector:
     class SkipReason(Enum):
         SKIP_SIZE = "SKIP_SIZE"
         SKIP_TECHNICAL = "SKIP_TECHNICAL"
+        SKIP_META = "SKIP_META"
+        SKIP_FACTUAL_QUERY = "SKIP_FACTUAL_QUERY"
+        SKIP_OUTPUT_FORMATTING = "SKIP_OUTPUT_FORMATTING"
 
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
         SkipReason.SKIP_TECHNICAL: "💻 Technical Content Detected, skipping memory operations",
+        SkipReason.SKIP_META: "💬 Conversational Filler Detected, skipping memory operations",
+        SkipReason.SKIP_FACTUAL_QUERY: "📚 General Knowledge Query Detected, skipping memory operations",
+        SkipReason.SKIP_OUTPUT_FORMATTING: "🎨 Format Instruction Detected, skipping memory operations",
     }
 
     def __init__(self, embedding_model: SentenceTransformer):
@@ -395,6 +424,24 @@ class SkipDetector:
                 show_progress_bar=False
             )
             
+            meta_embeddings = self.embedding_model.encode(
+                self.META_CONVERSATION_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            factual_query_embeddings = self.embedding_model.encode(
+                self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            output_formatting_embeddings = self.embedding_model.encode(
+                self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
             conversational_embeddings = self.embedding_model.encode(
                 self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
@@ -402,11 +449,21 @@ class SkipDetector:
             )
             
             self._reference_embeddings = {
-                'technical_embeddings': technical_embeddings,
-                'conversational_embeddings': conversational_embeddings
+                'technical': technical_embeddings,
+                'meta': meta_embeddings,
+                'factual_query': factual_query_embeddings,
+                'output_formatting': output_formatting_embeddings,
+                'conversational': conversational_embeddings,
             }
             
-            logger.info(f"SkipDetector initialized with {len(self.TECHNICAL_CATEGORY_DESCRIPTIONS)} technical and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} conversational category descriptions")
+            total_skip_categories = (
+                len(self.TECHNICAL_CATEGORY_DESCRIPTIONS) + 
+                len(self.META_CONVERSATION_CATEGORY_DESCRIPTIONS) +
+                len(self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS) +
+                len(self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS)
+            )
+            
+            logger.info(f"SkipDetector initialized with {total_skip_categories} skip categories and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} personal categories")
         except Exception as e:
             logger.error(f"Failed to initialize SkipDetector reference embeddings: {e}")
             self._reference_embeddings = None
@@ -436,37 +493,45 @@ class SkipDetector:
             return None
         
         try:
+            from sentence_transformers import util
+            
             message_embedding = self.embedding_model.encode(
                 message.strip(),
                 convert_to_tensor=True,
                 show_progress_bar=False
             )
             
-            from sentence_transformers import util
-            
-            technical_similarities = util.cos_sim(
-                message_embedding, 
-                self._reference_embeddings['technical_embeddings']
-            )[0]
-            max_technical_similarity = float(technical_similarities.max())
-            
             conversational_similarities = util.cos_sim(
                 message_embedding, 
-                self._reference_embeddings['conversational_embeddings']
+                self._reference_embeddings['conversational']
             )[0]
             max_conversational_similarity = float(conversational_similarities.max())
             
-            result = None
-            if max_technical_similarity > Constants.SKIP_DETECTION_SIMILARITY_THRESHOLD:
-                similarity_margin = max_technical_similarity - max_conversational_similarity
-                if similarity_margin > Constants.SKIP_DETECTION_MARGIN:
-                    result = self.SkipReason.SKIP_TECHNICAL.value
-                    
-                    best_match_idx = int(technical_similarities.argmax())
-                    matched_description = self.TECHNICAL_CATEGORY_DESCRIPTIONS[best_match_idx]
-                    logger.info(f"Skipping message (tech: {max_technical_similarity:.3f}, conv: {max_conversational_similarity:.3f}, margin: {similarity_margin:.3f}, category: {matched_description[:50]}...)")
+            skip_categories = [
+                ('output_formatting', self.SkipReason.SKIP_OUTPUT_FORMATTING, self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS),
+                ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
+                ('meta', self.SkipReason.SKIP_META, self.META_CONVERSATION_CATEGORY_DESCRIPTIONS),
+                ('factual_query', self.SkipReason.SKIP_FACTUAL_QUERY, self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS),
+            ]
             
-            return result
+            for cat_key, skip_reason, descriptions in skip_categories:
+                similarities = util.cos_sim(
+                    message_embedding, 
+                    self._reference_embeddings[cat_key]
+                )[0]
+                max_similarity = float(similarities.max())
+                
+                if max_similarity > Constants.SKIP_DETECTION_SIMILARITY_THRESHOLD:
+                    margin = max_similarity - max_conversational_similarity
+                    if margin > Constants.SKIP_DETECTION_MARGIN:
+                        best_match_idx = int(similarities.argmax())
+                        matched_desc = descriptions[best_match_idx]
+                        logger.info(f"Skipping message - {skip_reason.value} "
+                                   f"({cat_key}: {max_similarity:.3f}, conv: {max_conversational_similarity:.3f}, "
+                                   f"margin: {margin:.3f}, category: {matched_desc[:50]}...)")
+                        return skip_reason.value
+            
+            return None
             
         except Exception as e:
             logger.error(f"Error in semantic skip detection: {e}")
