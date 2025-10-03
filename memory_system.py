@@ -523,12 +523,8 @@ class SkipDetector:
                 
                 if max_similarity > Constants.SKIP_DETECTION_SIMILARITY_THRESHOLD:
                     margin = max_similarity - max_conversational_similarity
-                    if margin > Constants.SKIP_DETECTION_MARGIN:
-                        best_match_idx = int(similarities.argmax())
-                        matched_desc = descriptions[best_match_idx]
-                        logger.info(f"Skipping message - {skip_reason.value} "
-                                   f"({cat_key}: {max_similarity:.3f}, conv: {max_conversational_similarity:.3f}, "
-                                   f"margin: {margin:.3f}, category: {matched_desc[:50]}...)")
+                    if margin > Constants.SKIP_DETECTION_MARGIN:                        
+                        logger.info(f"Skipping message - {skip_reason.value} ({cat_key}: {max_similarity:.3f}, conv: {max_conversational_similarity:.3f}, margin: {margin:.3f})")
                         return skip_reason.value
             
             return None
