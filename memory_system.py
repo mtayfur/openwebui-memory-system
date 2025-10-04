@@ -662,7 +662,7 @@ CANDIDATE MEMORIES:
             selected_memories = candidate_memories[:max_injection]
 
         duration = time.time() - start_time
-        duration_text = f" in {duration:.2f}s" if duration > 0 else ""
+        duration_text = f" in {duration:.2f}s" if duration >= 0.01 else ""
         await self.memory_system._emit_status(emitter, f"🎯 Memory Retrieval Complete{duration_text}", done=False)
         logger.info(f"🎯 Memory Retrieval Complete{duration_text}")
         return selected_memories, analysis_info
