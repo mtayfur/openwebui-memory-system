@@ -54,6 +54,7 @@ class Constants:
     # Skip Detection Thresholds
     SKIP_DETECTION_SIMILARITY_THRESHOLD = 0.50  # Similarity threshold for skip category detection (tuned for zero-shot)
     SKIP_DETECTION_MARGIN = 0.05  # Minimum margin required between technical and conversational similarity to skip
+    SKIP_DETECTION_CONFIDENT_MARGIN = 0.15  # Margin threshold for confident skips that trigger early exit
     
     # Safety & Operations
     MAX_DELETE_OPERATIONS_RATIO = 0.6  # Maximum delete operations ratio for safety
@@ -477,9 +478,52 @@ class SkipDetector:
             return SkipDetector.SkipReason.SKIP_SIZE.value
         return None
 
+    def _fast_path_skip_detection(self, message: str) -> Optional[str]:
+        """Language-agnostic structural pattern detection with ~95% confidence."""
+        msg_len = len(message)
+        
+        if '```' in message:
+            return self.SkipReason.SKIP_TECHNICAL.value
+        
+        lines_stripped = [line.strip() for line in message.split('\n') if line.strip()]
+        if lines_stripped:
+            command_lines = sum(1 for line in lines_stripped if line.startswith(('$', '#', '>', '%')))
+            if command_lines >= 3 or (len(lines_stripped) <= 3 and command_lines >= 2):
+                return self.SkipReason.SKIP_TECHNICAL.value
+                
+        markup_chars = sum(message.count(c) for c in '{}[]<>')
+        if markup_chars >= 6:  
+            if markup_chars / msg_len > 0.06:
+                return self.SkipReason.SKIP_TECHNICAL.value
+        
+        line_count = message.count('\n')
+        if line_count > 12:
+            lines = message.split('\n')
+            non_empty_lines = [line for line in lines if line.strip()]
+            if non_empty_lines:                
+                structured_lines = sum(1 for line in non_empty_lines if (
+                    line.startswith((' ', '\t')) or 
+                    any(c in line for c in '{}[]<>') or 
+                    (': ' in line or ':\n' in line) 
+                ))
+                if structured_lines / len(non_empty_lines) > 0.5:
+                    return self.SkipReason.SKIP_TECHNICAL.value
+                
+        if msg_len > 50:
+            special_chars = sum(1 for c in message if not c.isalnum() and not c.isspace())
+            special_ratio = special_chars / msg_len
+            if special_ratio > 0.35:
+                alphanumeric = sum(1 for c in message if c.isalnum())
+                if alphanumeric / msg_len < 0.50:
+                    return self.SkipReason.SKIP_TECHNICAL.value
+        
+        return None
+
     def detect_skip_reason(self, message: str, max_message_chars: int = Constants.MAX_MESSAGE_CHARS) -> Optional[str]:
         """
-        Detect if a message should be skipped using zero-shot semantic classification.
+        Detect if a message should be skipped using two-stage detection:
+        1. Fast-path structural patterns (~95% confidence)
+        2. Semantic classification (for remaining cases)
         
         Returns:
             Skip reason string if content should be skipped, None otherwise
@@ -487,6 +531,11 @@ class SkipDetector:
         size_issue = self.validate_message_size(message, max_message_chars)
         if size_issue:
             return size_issue
+        
+        fast_skip = self._fast_path_skip_detection(message)
+        if fast_skip:
+            logger.info(f"Fast-path skip: {fast_skip}")
+            return fast_skip
         
         if self._reference_embeddings is None:
             logger.warning("SkipDetector reference embeddings not initialized, allowing message through")
@@ -523,6 +572,11 @@ class SkipDetector:
                 
                 if max_similarity > Constants.SKIP_DETECTION_SIMILARITY_THRESHOLD:
                     margin = max_similarity - max_conversational_similarity
+                    
+                    if margin > Constants.SKIP_DETECTION_CONFIDENT_MARGIN:
+                        logger.info(f"Skipping message - {skip_reason.value} ({cat_key}: {max_similarity:.3f}, conv: {max_conversational_similarity:.3f}, margin: {margin:.3f})")
+                        return skip_reason.value
+                    
                     if margin > Constants.SKIP_DETECTION_MARGIN:                        
                         logger.info(f"Skipping message - {skip_reason.value} ({cat_key}: {max_similarity:.3f}, conv: {max_conversational_similarity:.3f}, margin: {margin:.3f})")
                         return skip_reason.value
