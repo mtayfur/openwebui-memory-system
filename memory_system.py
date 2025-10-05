@@ -361,6 +361,18 @@ class SkipDetector:
         "Kubernetes Docker container deployment manifest spec replicas image registry pods",
         "SQL query statement select join where table column row index syntax",
         "log output INFO WARN DEBUG timestamp server started on port connection failed memory",
+        "stack trace at line module raised exception caught unhandled error debugging trace",
+        "regex pattern regular expression match groups capture backslash escape metacharacter wildcard",
+        "unit test pytest jest mocha assertion mock fixture describe it expect testing framework",
+        "CI CD pipeline Jenkins GitHub Actions workflow build deploy automation continuous integration",
+        "TypeScript interface type generic extends implements compiler strict mode declaration",
+        "CSS stylesheet selector property flexbox grid responsive media query animation transform",
+        "database schema table primary key foreign key index migration ALTER CREATE DROP",
+        "git commit push pull merge branch conflict rebase HEAD origin master main repository",
+        "npm package.json dependencies install build script version node_modules webpack babel",
+        "API response status code headers body JSON XML parsing serialization deserialization",
+        "AWS S3 bucket EC2 instance Lambda function CloudFormation region availability zone",
+        "nginx apache server configuration virtual host proxy redirect location upstream",
     ]
     
     META_INSTRUCTION_CATEGORY_DESCRIPTIONS = [
@@ -375,6 +387,13 @@ class SkipDetector:
         "adjust response make shorter longer simpler detailed bullet points numbered list style",
         "rewrite rephrase translate summarize paraphrase previous response output answer instruction",
         "change tone formal casual technical professional explain like five years old tone",
+        "can you explain that again repeat simpler words break down clarify confused understand",
+        "give me bullet points numbered list step by step table format organize structure",
+        "make it shorter concise brief condensed summarized trim down reduce length",
+        "expand elaborate more detail depth comprehensive thorough extensive explanation",
+        "show example provide sample demonstrate illustrate case scenario instance",
+        "continue keep going more add finish complete rest of remaining",
+        "stop enough that's sufficient good for now pause hold on wait",
     ]
     
     FACTUAL_QUERY_CATEGORY_DESCRIPTIONS = [
@@ -388,6 +407,20 @@ class SkipDetector:
         "Explain How What Why question understanding concepts neural networks seasons photosynthesis data structures",
         "How do work question about systems architecture concepts databases dependency injection REST API protocols",
         "What How Why Who When Where Explain Define question seeking factual general knowledge information",
+        "What causes climate change global warming greenhouse effect carbon dioxide emissions",
+        "How does machine learning work neural network training gradient descent backpropagation",
+        "Who was first president United States founding fathers declaration independence history",
+        "What is capital of France Japan Brazil country geography world map location",
+        "Explain theory of relativity Einstein quantum mechanics physics black holes universe",
+        "How to tie necktie change tire reset password bake cookies general instructions",
+        "What does GDP mean acronym definition terminology vocabulary business economics",
+        "Why is sky blue ocean salty scientific explanation natural phenomenon",
+        "Tell me about Roman Empire ancient civilization historical period world war",
+        "What is best way to learn programming language study effectively general advice",
+        "How many countries in world population of China area of Russia facts statistics",
+        "What are symptoms of flu diabetes cancer medical information disease condition",
+        "Explain blockchain cryptocurrency Bitcoin mining decentralized ledger technology concept",
+        "What is photosynthesis cellular respiration mitosis meiosis biology process",
     ]
     
     PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS = [
@@ -397,6 +430,17 @@ class SkipDetector:
         "percentage calculation explicit numbers what is 25 percent of 800 discount price 30 off numeric percentage",
         "algebra equation explicit numbers solve for x in equation 2x plus 5 equals 15 quadratic formula numeric values",
         "geometry calculation numeric measurements area of circle radius 5 volume of cube side 10 circumference numeric dimensions",
+        "tip calculation restaurant bill 87.50 dollars 15 percent 18 percent 20 percent gratuity",
+        "compound interest calculate savings 5000 dollars annual rate 4 percent years investment",
+        "mortgage payment monthly calculate 300000 loan 30 years interest rate 3.5 percent",
+        "what is square root of 144 256 cube root 27 exponent power calculation",
+        "statistics mean median mode average dataset numbers 12 15 18 20 22 calculate",
+        "probability chance rolling dice flipping coin odds percentage likelihood numeric",
+        "what is 23 plus 456 minus 78 times 9 divided by 3 equals arithmetic",
+        "convert 5 feet 9 inches to centimeters meters height weight pounds kilograms",
+        "calculate BMI body mass index weight 180 pounds height 5 feet 10 inches",
+        "how many days between January 15 and March 20 date difference calculation",
+        "what is 15 percent tip on 65.40 bill split check 4 people each pays",
     ]
     
     EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS = [
@@ -410,6 +454,12 @@ class SkipDetector:
         "translate followed by colon and explicit text Translate colon Where is the train station to Portuguese",
         "how to say specific word phrase in foreign language like how to say computer in French hello in Spanish",
         "translate paragraph text with word translate and following paragraph colon This is test translate to",
+        "translate the following to Spanish French German Italian Japanese Chinese Arabic Russian",
+        "what is French Spanish German word for computer house beautiful thank you",
+        "convert this text to another language translate sentence paragraph to target language",
+        "how do I say in Spanish French where is bathroom I need help please",
+        "translate quote The quick brown fox jumps over lazy dog to language",
+        "give me Japanese Spanish German translation of specific quoted text passage",
     ]
     
     GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS = [
@@ -420,6 +470,14 @@ class SkipDetector:
         "error correction like check this text for mistakes review sentence for grammar problems with text included",
         "typo fixing with text containing errors like Teh quick brown fox check spelling in this paragraph",
         "sentence correction with wrong grammar like fix this I has three book correct the punctuation",
+        "check my writing for grammar spelling mistakes errors in this text passage essay",
+        "is this sentence correct grammatically proper Their going to they're house there",
+        "proofread my email letter essay with provided text content check clarity flow",
+        "improve my writing make this better more professional formal academic style",
+        "correct punctuation comma splice run-on sentence fragment capitalization errors",
+        "word choice suggestion better alternative synonym replace improve vocabulary",
+        "does this make sense is this clear understandable readable coherent phrasing",
+        "active voice passive voice sentence structure parallel construction revision",
     ]
     
     CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
@@ -440,6 +498,29 @@ class SkipDetector:
         "personal language learning like I am learning Spanish for move taking French lessons for job studying Mandarin because my wife speaks it German for university with personal motivation",
         "personal request for help with specific technology problem at job workplace or in personal project with named context like I am having trouble with React at my job",
         "planning party celebration event for my child family member with specific personal context like my daughter birthday my son graduation",
+        "relationship status change I got married engaged dating divorced separated with partner spouse boyfriend girlfriend specific person name",
+        "pet ownership statement I adopted got have dog cat bird named specific name my pet family animal",
+        "moving relocation I moved am moving to new city country state from previous location with personal reason context",
+        "dietary preference restriction I am vegetarian vegan gluten-free lactose intolerant allergic to with lasting personal commitment",
+        "religious cultural practice I celebrate observe follow Christian Jewish Muslim Hindu Buddhist tradition faith belief",
+        "living situation I live with roommate alone parents family bought house apartment rent own",
+        "transportation vehicle I drive own have car specific make model commute to work bike public transit",
+        "financial situation I am saving for house on budget tight money planning retirement investment",
+        "anniversary birthday milestone my wedding anniversary is my birthday is my child graduated turned specific date age",
+        "personal project working on book writing novel painting music hobby with emotional investment meaningful pursuit",
+        "skill development I am learning play guitar piano instrument speak language for personal fulfillment enjoyment",
+        "exercise fitness routine I go to gym run yoga regularly established consistent habit activity",
+        "food preferences I love hate favorite cuisine dish allergy intolerance lasting taste preference aversion",
+        "work schedule I work night shift remote from home freelance part-time hours schedule arrangement",
+        "education background I graduated from university college degree major studied at school certification",
+        "pet preferences I prefer like love cats dogs birds animals specific type breed characteristics",
+        "home life I live in specific city neighborhood area near landmark with context details",
+        "personal values I care about believe in strongly value environment sustainability social justice causes",
+        "medical history I have been diagnosed with condition taking medication treatment ongoing health situation",
+        "phobias fears I am afraid of heights flying spiders enclosed spaces significant lasting fear",
+        "personal achievements I got promoted received award completed certification marathon significant accomplishment milestone",
+        "social preferences I am introvert extrovert prefer small groups crowds socializing alone time personality trait",
+        "sleep schedule I am night owl early bird work late shift sleep pattern routine",
     ]
 
     class SkipReason(Enum):
