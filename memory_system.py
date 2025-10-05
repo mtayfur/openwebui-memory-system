@@ -53,7 +53,7 @@ class Constants:
     
     # Skip Detection Thresholds
     SKIP_DETECTION_SIMILARITY_THRESHOLD = 0.50  # Similarity threshold for skip category detection (tuned for zero-shot)
-    SKIP_DETECTION_MARGIN = 0.05  # Minimum margin required between technical and conversational similarity to skip
+    SKIP_DETECTION_MARGIN = 0.05  # Minimum margin required between skip and conversational similarity to skip
     SKIP_DETECTION_CONFIDENT_MARGIN = 0.15  # Margin threshold for confident skips that trigger early exit
     
     # Safety & Operations
@@ -344,31 +344,78 @@ class SkipDetector:
     
     TECHNICAL_CATEGORY_DESCRIPTIONS = [
         "complete programming code with function definitions class declarations variable assignments import statements or code syntax",
-        "error messages with stack traces exception types file paths line numbers or error codes",
+        "error messages with stack traces exception types file paths line numbers or error codes without personal context",
         "system logs with timestamps severity levels and status indicators like ERROR INFO WARN DEBUG",
         "shell terminal commands starting with dollar signs or containing commands like sudo git npm docker apt-get pip curl",
         "structured data in JSON XML YAML CSV format with nested objects arrays brackets or key-value pairs",
         "technical documentation describing APIs configurations file formats system specifications or protocols",
         "formatted tables lists or outputs with multiple rows columns headers or consistent structured entries",
         "debugging output diagnostic information performance metrics system status or build reports",
-        "impersonal technical question asking how technology works or explaining programming concepts algorithms or protocols without mentioning personal situation",
-        "abstract question about technical comparisons differences or theoretical computer science concepts without personal learning context",
+        "impersonal technical question asking how technology works explaining programming concepts algorithms data structures protocols without my job my project or my career",
+        "abstract question about technical comparisons differences theoretical computer science concepts without I am learning or personal development context",
+        "description of programming algorithm implementation with complexity analysis like O notation time complexity space complexity or algorithmic approach without personal project",
+        "general technical explanation about software architecture design patterns microservices authentication systems backend implementation without my work my job context",
+        "discussion of API endpoints HTTP methods request response formats REST GraphQL WebSocket protocols without I am building or personal application",
+        "explanation of code functionality behavior logic flow with technical terms but without I am struggling I have trouble or career anxiety context",
+        "Windows file paths with backslashes like C colon backslash Program Files or drive letters in technical context",
+        "deployment scripts configuration files with multiple technical components paths URLs commands without personal deployment story",
+        "error stack trace with file paths line numbers exception names like NullPointerException SegmentationFault RuntimeError without personal debugging story",
+        "system error messages with error codes status codes HTTP codes like 404 500 like Connection refused Timeout Exception without personal context",
+        "application logs with INFO WARN ERROR DEBUG levels timestamps log entries without my application my system",
+        "API query syntax like GraphQL query REST endpoint cURL command HTTP request without I am building my API",
+        "technical error output like compilation errors runtime exceptions segmentation faults core dumps without personal project context",
+        "code snippet with syntax highlighting language markers like python javascript java without personal implementation story",
+        "React JSX component code with angle brackets curly braces className props like const Component equals arrow function return JSX",
+        "HTTP error status codes like 404 Not Found 500 Internal Server Error 403 Forbidden with status messages",
+        "GraphQL query syntax with query mutation fragment type definitions like query curly brace field arguments",
+        "debug level logs with DEBUG prefix timestamp log level debug output without personal application debugging story",
+        "single command line with pipe operators like curl pipe jq grep pipe sed awk pipe without personal story context",
+        "stack trace with arrow notation like function1 arrow function2 arrow function3 showing call sequence without debugging my code",
+        "single line DEBUG log with request headers response details authorization content-type without my application my debugging",
     ]
     
     META_CONVERSATION_CATEGORY_DESCRIPTIONS = [
-        "acknowledgment response like thanks for the help got it I understand makes sense that is helpful appreciate it",
-        "greeting conversation like hello how are you doing today nice to meet you good morning have a nice day",
-        "polite filler like please excuse me sorry to bother you hope you are well no worries all good",
-        "agreement confirmation like yes that is correct absolutely I agree with you exactly right you are correct indeed",
-        "farewell closing like goodbye see you later talk soon have a good day take care bye",
+        "acknowledgment response like thanks for the help got it I understand makes sense that is helpful appreciate it thank you",
+        "greeting salutation like hello hi hey how are you doing today nice to meet you good morning good evening have a nice day",
+        "polite filler courtesy phrase like please excuse me sorry to bother you hope you are well no worries all good",
+        "agreement confirmation acknowledgment like yes that is correct absolutely I agree with you exactly right you are correct indeed totally",
+        "farewell closing goodbye like goodbye see you later talk soon have a good day take care bye have a great day",
+        "casual greeting like hey what is up how is it going yo hello there hi friend good to see you",
+        "extended thanks appreciation like thank you so much really appreciate your help grateful for your assistance thanks again",
+        "clarification about previous messages like sorry for confusion let me clarify what I meant I should have been more specific I apologize for unclear question",
+        "feedback about conversation like that was helpful your explanation was clear I appreciate the detailed response your answer exceeded expectations",
+        "meta discussion about how asking questions like I will try to be more specific next time sorry for vague question I should provide more context",
+        "informal greeting like hey what is up yo hi there wassup hello friend good morning",
+        "simple agreement like absolutely exactly totally yes indeed that is right completely agree",
+        "brief acknowledgment like got it understood makes sense I see okay cool sounds good",
+        "short greeting without context like hi hello hey good morning good evening how are you",
+        "casual hello hey hi wassup greeting phrases like hey there hi friend what is up hello good morning yo",
+        "informal greetings variations like good morning friend how is it going today hello there hey what are you up to",
+        "simple strong agreement phrases like absolutely agree totally agree exactly right yes indeed that is completely right",
+        "brief positive acknowledgment like I hope so fingers crossed hopefully that works hope it helps",
+        "extended detailed thanks with multiple points like thank you for A B C really appreciate detailed help grateful for all the assistance",
     ]
     
     FACTUAL_QUERY_CATEGORY_DESCRIPTIONS = [
-        "definition question asking what is something what does term mean explain concept without personal context or situation",
-        "factual information request about dates events history geography science without personal relevance application or learning goal",
-        "general how-to question asking for instructions steps process recipe without mentioning personal needs circumstances or projects",
-        "theoretical explanation request about why how things work in general abstract concepts without personal application or career context",
-        "comparison question asking differences between options technologies concepts without stating personal preference situation or decision",
+        "definition question asking what is something what does term mean explain concept define word without personal context or situation",
+        "factual information request about dates events history geography science facts trivia without personal relevance application or learning goal",
+        "general how-to question asking for instructions steps process recipe procedure without mentioning personal needs circumstances or projects",
+        "theoretical explanation request about why how things work in general abstract concepts principles without personal application or career context",
+        "comparison question asking differences between options technologies concepts products services without stating personal preference situation decision or job requirement",
+        "who what when where question about historical figures famous people events discoveries inventions without personal connection or story",
+        "multiple questions about same topic with numbered list several parts complex multi-part query with first second third or bullet points asking many questions",
+        "academic theoretical question with multiple sub-questions breaking down topic into components analyzing from different angles without personal project or work",
+        "scientific explanation request about natural phenomena physics chemistry biology astronomy without personal research study or career context",
+        "general knowledge query about capitals countries populations currencies geography facts without travel plans personal interest or job relevance",
+        "abstract technology comparison like difference between Python and Java without I am choosing or I work with context",
+        "theoretical programming question about best practices clean code principles without my project my codebase or work situation",
+        "what is definition question like what is photosynthesis what is blockchain what does term mean explain concept",
+        "when did historical question like when did event happen when was invention when did person live",
+        "how to general instruction like how to tie tie how to change tire how to wash clothes without personal need",
+        "explain how works question like explain how blockchain works explain neural networks explain quantum mechanics without personal learning goal",
+        "abstract comparison without personal choice like difference between capitalism socialism what is better Python or Java",
+        "when did short historical question like when did war end when was built when did person born when occurred",
+        "short when question about past events dates like when did happen when was invention when did discovery",
     ]
     
     OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS = [
@@ -376,6 +423,86 @@ class SkipDetector:
         "request to adjust response style length like make it shorter longer simpler more detailed use bullet points numbered list",
         "command to rewrite rephrase translate summarize previous response output or answer differently",
         "request to change tone presentation like be more formal casual technical professional explain like I am five years old",
+        "tone adjustment request like use professional tone more formal language business tone corporate style",
+        "professional tone instruction like write in professional manner use business language formal style",
+    ]
+    
+    PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS = [
+        "pure arithmetic calculation with explicit numbers like calculate 15 percent of 250 or solve 45 times 67 equals",
+        "mathematical expression evaluation with operators like 2 plus 3 times 4 divided by 5 minus 6 or what is 123 times 456",
+        "unit conversion request with specific values like convert 100 kilometers to miles or 72 fahrenheit to celsius",
+        "percentage calculation with explicit numbers like what is 25 percent of 800 or calculate discount price of 120 minus 30 percent",
+        "simple algebra equation solving with explicit numbers like solve for x in equation 2x plus 5 equals 15",
+        "geometry calculation with specific measurements like area of circle radius 5 or volume of cube side 10",
+        "direct numerical computation request like square root of 144 or 15 plus 23 minus 8 times 2",
+    ]
+    
+    EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS = [
+        "explicit translation instruction with text to translate like translate this to Spanish colon Hello how are you in quotes or brackets",
+        "translation request with provided phrase like how do you say quoted phrase good morning in French with explicit text given",
+        "language conversion with text block like convert this English text to Japanese here is the text followed by actual content",
+        "direct phrase translation with quoted or bracketed text like translate I am hungry to Mandarin with explicit phrase provided",
+        "sentence translation with actual text like what is Spanish translation of quoted sentence or how to say specific phrase in Italian",
+        "text conversion request with source content like translate following paragraph to Portuguese colon followed by actual text content",
+        "translation with colon separator like Translate to German colon followed by English sentence or text to convert",
+        "how do you say question with specific word or phrase like how do you say computer in Russian or what is hello in French",
+        "translate to language instruction with target language specified like translate to Italian translate to Japanese translate to Portuguese",
+        "language translation request with explicit source text in quotes brackets or after colon separator indicating text to translate",
+        "translate to Italian Spanish Portuguese request explicitly asking for translation like how do you say in Italian translate this to Spanish",
+    ]
+    
+    GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS = [
+        "proofreading request with incorrect text provided like fix grammar in this text here is my draft check for typos in quoted text",
+        "grammar correction request with specific wrong text or sentence provided for review and correction like She don't like",
+        "spelling and punctuation check instruction with specific text content to review and fix errors in provided passage",
+        "copy editing request with text provided like proofread this paragraph correct errors in this sentence fix mistakes in text block",
+        "explicit error correction like check this text for mistakes or review this sentence for grammar problems with text included",
+        "correction request with misspelled or grammatically incorrect text like Their going too the store or Me and him went",
+        "typo fixing request with text containing errors like Teh quick brown fox or check spelling in this paragraph",
+        "sentence correction with wrong grammar like fix this I has three book or correct the punctuation in this text",
+        "check grammar instruction with text to review like check grammar in this or correct grammar in following sentence",
+        "proofreading with specific errors like multiple typos spelling mistakes punctuation errors in provided text passage",
+    ]
+    
+    CREATIVE_FICTION_CATEGORY_DESCRIPTIONS = [
+        "request to write fictional story tale narrative about imaginary characters events or fantasy scenarios with no personal autobiography",
+        "instruction to create fictional dialogue scene conversation between made-up characters in imaginary situation or fantasy setting not real people",
+        "request for creative writing like story poem song lyrics about generic fantasy themes dragons robots aliens without personal meaning",
+        "creative writing prompt for fiction like write short story about scenario with no personal connection memoir or autobiography",
+        "generate fictional content like fairy tale science fiction horror story with invented characters and imaginary events not real life",
+        "writing request for imaginary scenarios like wizard adventure space exploration fantasy world without personal narrative or memoir",
+        "creative story generation about made-up situations fictional characters fantasy settings not based on real personal experiences",
+        "write me a poem request about ocean nature universe or abstract themes without personal significance or emotional connection",
+        "fiction generation like write short story about dragon knight or create tale about robots aliens without personal context",
+        "literary creation request like compose poem generate lyrics craft narrative about imaginary topics dragons wizards fantasy",
+        "write dialogue conversation between characters request like write conversation between detective and suspect or dialogue in coffee shop scene",
+        "poetry composition request like compose haiku write sonnet create verse about abstract topic nature love without personal story",
+        "story scene description request like write opening scene describe battle sequence craft exposition about fictional world setting",
+        "compose poem with specific form structure requirements like write villanelle with strict rhyme scheme write sonnet with iambic pentameter following formal poetry rules",
+        "creative writing with detailed specifications like write science fiction story with exact word count specific setting particular tone detailed requirements without personal narrative",
+    ]
+    
+    ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS = [
+        "instruction to pretend act as roleplay fictional character like pirate wizard robot alien for entertainment fun or game",
+        "request to respond as if you are specific fictional persona celebrity historical figure or non-human entity like cat computer talking animal for fun",
+        "game simulation instruction like let us play game where you are character and I am character for entertainment not practice",
+        "entertainment persona adoption like talk like Shakespeare speak as caveman respond as medieval knight fictional character for fun",
+        "roleplay request for fun entertainment like act as detective pirate space captain without job interview practice or real preparation",
+        "pretend play instruction like be a robot from future or talk as talking animal for entertainment not professional practice",
+        "act as instruction like act as pirate pretend you are wizard act like dungeon master narrator for game scenario",
+        "respond as if request like respond as if you were Sherlock Holmes or talk as medieval knight for entertainment game",
+        "persona adoption request like be a Victorian gentleman talk as computer from 1980s speak as alien visiting Earth",
+        "roleplay character request like act as talking tree be a mystery game narrator play role of space captain",
+        "explicit act as character instruction like act as a robot act as detective act as wizard act as knight without write story about",
+        "pretend you are someone request like pretend you are pirate pretend you are from future pretend you are alien",
+        "respond as if you were instruction like respond as if you were Shakespeare respond as if you were computer respond as caveman",
+        "adopt persona entertainment like talk like Victorian person speak as robot speak like medieval knight for fun game",
+        "game dungeon master narrator roleplay like be the dungeon master act as narrator in adventure game play storytelling game",
+        "roleplay entity character like act as talking animal respond as tree pretend to be alien computer for entertainment",
+        "interactive character roleplay distinction like respond as knight talk as wizard be detective NOT write story about knight write tale about wizard create narrative about detective",
+        "direct persona instruction like you are the dungeon master you are mystery narrator you will be space captain WITHOUT write about create story generate tale",
+        "second person roleplay like you are wizard you are knight you are alien responding as character NOT third person write story about wizard story about knight",
+        "conversational roleplay like respond as if robot talk as tree answer as alien NOT compose write create generate story about these characters",
     ]
     
     CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
@@ -392,7 +519,16 @@ class SkipDetector:
         "request for recommendations based on stated personal context preferences needs situation location or individual requirements",
         "learning statement expressing personal interest in understanding something new as part of career transition or personal development",
         "question about helping family member child spouse or relative with their interests education or personal needs",
-        "statement about personal challenges struggles confusion with work tasks or technology in workplace context",
+        "statement about personal challenges struggles confusion with work tasks technology language learning or skill development in personal context",
+        "expression of personal difficulty with writing grammar language skills at job workplace or in professional setting",
+        "personal language learning statement like I am learning Spanish for move or taking French lessons for job with personal motivation",
+        "statement about studying language for personal reason like learning Mandarin because my wife speaks it or studying German for university",
+        "personal tech struggle at work like I am having trouble with React at my job or confused about framework at my workplace",
+        "career anxiety or stress about technology skills like struggling with imposter syndrome feeling overwhelmed at new technical job",
+        "personal request for help with specific technology problem at job workplace or in personal project with named context",
+        "planning party celebration event for my child family member with specific personal context like my daughter birthday my son graduation",
+        "learning for my course my class my school with personal educational context like understanding quantum computing for my physics course",
+        "help me understand technology for my personal learning my education my certification with career development or school context",
     ]
 
     class SkipReason(Enum):
@@ -401,6 +537,11 @@ class SkipDetector:
         SKIP_META = "SKIP_META"
         SKIP_FACTUAL_QUERY = "SKIP_FACTUAL_QUERY"
         SKIP_OUTPUT_FORMATTING = "SKIP_OUTPUT_FORMATTING"
+        SKIP_PURE_MATH = "SKIP_PURE_MATH"
+        SKIP_TRANSLATION = "SKIP_TRANSLATION"
+        SKIP_GRAMMAR_PROOFREAD = "SKIP_GRAMMAR_PROOFREAD"
+        SKIP_CREATIVE_FICTION = "SKIP_CREATIVE_FICTION"
+        SKIP_ROLEPLAY = "SKIP_ROLEPLAY"
 
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
@@ -408,6 +549,11 @@ class SkipDetector:
         SkipReason.SKIP_META: "💬 Conversational Filler Detected, skipping memory operations",
         SkipReason.SKIP_FACTUAL_QUERY: "📚 General Knowledge Query Detected, skipping memory operations",
         SkipReason.SKIP_OUTPUT_FORMATTING: "🎨 Format Instruction Detected, skipping memory operations",
+        SkipReason.SKIP_PURE_MATH: "🔢 Mathematical Calculation Detected, skipping memory operations",
+        SkipReason.SKIP_TRANSLATION: "🌐 Translation Request Detected, skipping memory operations",
+        SkipReason.SKIP_GRAMMAR_PROOFREAD: "📝 Grammar/Proofreading Request Detected, skipping memory operations",
+        SkipReason.SKIP_CREATIVE_FICTION: "📖 Creative Fiction Request Detected, skipping memory operations",
+        SkipReason.SKIP_ROLEPLAY: "🎭 Roleplay/Entertainment Request Detected, skipping memory operations",
     }
 
     def __init__(self, embedding_model: SentenceTransformer):
@@ -443,6 +589,36 @@ class SkipDetector:
                 show_progress_bar=False
             )
             
+            pure_math_embeddings = self.embedding_model.encode(
+                self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            translation_embeddings = self.embedding_model.encode(
+                self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            grammar_embeddings = self.embedding_model.encode(
+                self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            fiction_embeddings = self.embedding_model.encode(
+                self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            roleplay_embeddings = self.embedding_model.encode(
+                self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
             conversational_embeddings = self.embedding_model.encode(
                 self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
@@ -454,6 +630,11 @@ class SkipDetector:
                 'meta': meta_embeddings,
                 'factual_query': factual_query_embeddings,
                 'output_formatting': output_formatting_embeddings,
+                'pure_math': pure_math_embeddings,
+                'translation': translation_embeddings,
+                'grammar': grammar_embeddings,
+                'fiction': fiction_embeddings,
+                'roleplay': roleplay_embeddings,
                 'conversational': conversational_embeddings,
             }
             
@@ -461,7 +642,12 @@ class SkipDetector:
                 len(self.TECHNICAL_CATEGORY_DESCRIPTIONS) + 
                 len(self.META_CONVERSATION_CATEGORY_DESCRIPTIONS) +
                 len(self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS) +
-                len(self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS)
+                len(self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS) +
+                len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS) +
+                len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS) +
+                len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS) +
+                len(self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS) +
+                len(self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS)
             )
             
             logger.info(f"SkipDetector initialized with {total_skip_categories} skip categories and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} personal categories")
@@ -479,36 +665,89 @@ class SkipDetector:
         return None
 
     def _fast_path_skip_detection(self, message: str) -> Optional[str]:
-        """Language-agnostic structural pattern detection with ~95% confidence."""
+        """Language-agnostic structural pattern detection with high confidence and low false positive rate."""
         msg_len = len(message)
         
-        if '```' in message:
+        # Pattern 1: Multiple URLs (5+ full URLs indicates link lists or technical references)
+        url_pattern_count = message.count('http://') + message.count('https://')
+        if url_pattern_count >= 5:
             return self.SkipReason.SKIP_TECHNICAL.value
         
-        lines_stripped = [line.strip() for line in message.split('\n') if line.strip()]
-        if lines_stripped:
-            command_lines = sum(1 for line in lines_stripped if line.startswith(('$', '#', '>', '%')))
-            if command_lines >= 3 or (len(lines_stripped) <= 3 and command_lines >= 2):
-                return self.SkipReason.SKIP_TECHNICAL.value
-                
-        markup_chars = sum(message.count(c) for c in '{}[]<>')
-        if markup_chars >= 6:  
-            if markup_chars / msg_len > 0.06:
+        # Pattern 2: Long unbroken alphanumeric strings (tokens, hashes, base64)
+        words = message.split()
+        for word in words:
+            cleaned = word.strip('.,;:!?()[]{}"\'"')
+            if len(cleaned) > 80 and cleaned.replace('-', '').replace('_', '').isalnum():
                 return self.SkipReason.SKIP_TECHNICAL.value
         
+        # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
+        separator_patterns = ['---', '===', '___', '***']
+        for pattern in separator_patterns:
+            if pattern * 3 in message.replace(' ', ''):
+                return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 4: Command-line patterns with context-aware detection
+        lines_stripped = [line.strip() for line in message.split('\n') if line.strip()]
+        if lines_stripped and len(lines_stripped) >= 3:
+            actual_command_lines = 0
+            for line in lines_stripped:
+                if line.startswith('$ ') and len(line) > 2:
+                    parts = line[2:].split()
+                    if parts and parts[0].isalnum():
+                        actual_command_lines += 1
+                elif line.startswith('# ') and len(line) > 2:
+                    rest = line[2:].strip()
+                    if rest and not rest[0].isupper() and ' ' in rest:
+                        actual_command_lines += 1
+                elif line.startswith('> ') and len(line) > 2:
+                    pass
+            
+            if actual_command_lines >= 3:
+                return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 5: High path/URL density (dots and slashes suggesting file paths or URLs)
+        if msg_len > 30:
+            slash_count = message.count('/') + message.count('\\')
+            dot_count = message.count('.')
+            path_chars = slash_count + dot_count
+            if path_chars > 10 and (path_chars / msg_len) > 0.15:
+                return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 6: Markup character density (structured data)
+        markup_chars = sum(message.count(c) for c in '{}[]<>')
+        if markup_chars >= 6:
+            if markup_chars / msg_len > 0.10:
+                return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 7: Highly structured multi-line content (require markup chars for technical confidence)
         line_count = message.count('\n')
-        if line_count > 12:
+        if line_count > 15:
             lines = message.split('\n')
             non_empty_lines = [line for line in lines if line.strip()]
-            if non_empty_lines:                
-                structured_lines = sum(1 for line in non_empty_lines if (
-                    line.startswith((' ', '\t')) or 
-                    any(c in line for c in '{}[]<>') or 
-                    (': ' in line or ':\n' in line) 
-                ))
-                if structured_lines / len(non_empty_lines) > 0.5:
-                    return self.SkipReason.SKIP_TECHNICAL.value
+            if non_empty_lines:
+                markup_in_lines = sum(1 for line in non_empty_lines if any(c in line for c in '{}[]<>'))
+                structured_lines = sum(1 for line in non_empty_lines if line.startswith((' ', '\t')))
                 
+                # Require high markup presence or indented structure with technical keywords
+                if markup_in_lines / len(non_empty_lines) > 0.3:
+                    return self.SkipReason.SKIP_TECHNICAL.value
+                elif structured_lines / len(non_empty_lines) > 0.6:
+                    technical_keywords = ['function', 'class', 'import', 'return', 'const', 'var', 'let', 'def']
+                    if any(keyword in message.lower() for keyword in technical_keywords):
+                        return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 8: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
+        if line_count >= 3:
+            lines = message.split('\n')
+            non_empty_lines = [line for line in lines if line.strip()]
+            if non_empty_lines:
+                indented_lines = sum(1 for line in non_empty_lines if line[0] in (' ', '\t'))
+                if indented_lines / len(non_empty_lines) > 0.5:
+                    code_indicators = ['def ', 'class ', 'function ', 'return ', 'import ', 'const ', 'let ', 'var ', 'public ', 'private ']
+                    if any(indicator in message.lower() for indicator in code_indicators):
+                        return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 9: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
             special_chars = sum(1 for c in message if not c.isalnum() and not c.isspace())
             special_ratio = special_chars / msg_len
@@ -558,6 +797,11 @@ class SkipDetector:
             
             skip_categories = [
                 ('output_formatting', self.SkipReason.SKIP_OUTPUT_FORMATTING, self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS),
+                ('pure_math', self.SkipReason.SKIP_PURE_MATH, self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS),
+                ('translation', self.SkipReason.SKIP_TRANSLATION, self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS),
+                ('grammar', self.SkipReason.SKIP_GRAMMAR_PROOFREAD, self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS),
+                ('fiction', self.SkipReason.SKIP_CREATIVE_FICTION, self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS),
+                ('roleplay', self.SkipReason.SKIP_ROLEPLAY, self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS),
                 ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
                 ('meta', self.SkipReason.SKIP_META, self.META_CONVERSATION_CATEGORY_DESCRIPTIONS),
                 ('factual_query', self.SkipReason.SKIP_FACTUAL_QUERY, self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS),
