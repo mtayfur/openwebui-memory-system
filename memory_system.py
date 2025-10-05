@@ -343,79 +343,73 @@ class SkipDetector:
     """Semantic-based content classifier using zero-shot classification with category descriptions."""
     
     TECHNICAL_CATEGORY_DESCRIPTIONS = [
-        "programming code with function definitions class declarations variable assignments import statements syntax",
-        "error messages stack traces exception types file paths line numbers codes NullPointerException SegmentationFault RuntimeError without personal context",
-        "system logs with timestamps severity levels ERROR INFO WARN DEBUG entries without my application",
-        "shell terminal commands with dollar signs sudo git npm docker apt-get pip curl jq grep sed awk pipe operators",
-        "structured data in JSON XML YAML CSV format with nested objects arrays brackets key-value pairs",
-        "technical documentation describing APIs configurations file formats system specifications protocols",
-        "formatted tables lists outputs with multiple rows columns headers structured entries",
-        "debugging output diagnostic information performance metrics system status build reports",
-        "impersonal technical question about technology programming concepts algorithms data structures protocols without my job project career learning",
-        "programming algorithm implementation with complexity analysis O notation time space complexity without personal project",
-        "technical explanation about software architecture design patterns microservices authentication systems without my work job",
-        "API endpoints HTTP methods request response formats REST GraphQL WebSocket cURL syntax without I am building my application",
-        "code functionality behavior logic flow with technical terms without I am struggling trouble career anxiety",
-        "Windows file paths with backslashes C colon Program Files drive letters",
-        "deployment scripts configuration files with multiple technical components paths URLs commands without personal story",
-        "React JSX component with angle brackets curly braces className props const Component arrow function return",
-        "HTTP error status codes 404 500 403 Not Found Internal Server Error Forbidden Connection refused Timeout",
-        "GraphQL query mutation fragment type definitions curly brace field arguments",
+        "Python code def class import return function calculates Fibonacci dynamic programming algorithm implementation",
+        "singleton pattern thread-safe lazy initialization design pattern factory builder implementation",
+        "JavaScript React code const let var function JSX return useState useEffect hooks implementation",
+        "error exception traceback TypeError NullPointerException IndexError segmentation fault core dumped output",
+        "HTTP 404 not found 500 server error 403 forbidden resource failed endpoint API error",
+        "terminal command line dollar sudo apt-get npm install docker run git clone commands",
+        "JSON object curly braces nested data array key colon value JSON content syntax",
+        "configuration file YAML nested properties database connection settings host port credentials config",
+        "WebSocket connection established on port 8080 binary message protocol real-time server communication",
+        "REST API endpoint POST GET PUT request response payload authentication bearer token",
+        "GraphQL mutation query fragment schema resolver field argument implementation syntax",
+        "file path directory /etc /var /usr /home config log lib bin system32",
+        "algorithm uses binary search tree O(log n) time complexity hash table implementation",
+        "markdown horizontal rule separator dashes equals asterisks underscores heading",
+        "code block indentation whitespace nested function body class method formatted",
+        "Kubernetes Docker container deployment manifest spec replicas image registry pods",
+        "SQL query statement select join where table column row index syntax",
+        "log output INFO WARN DEBUG timestamp server started on port connection failed memory",
     ]
     
-    META_CONVERSATION_CATEGORY_DESCRIPTIONS = [
-        "acknowledgment response like thanks got it I understand makes sense helpful appreciate it",
-        "polite courtesy phrase like please excuse me sorry to bother hope you are well no worries all good",
-        "agreement confirmation like yes correct absolutely I agree exactly right indeed totally completely",
-        "farewell closing like goodbye see you later talk soon have a good day take care bye",
-        "extended thanks with multiple points like thank you for detailed help grateful for assistance appreciate",
-        "clarification about previous messages like sorry for confusion let me clarify what I meant should have been more specific",
-        "feedback about conversation like that was helpful your explanation was clear exceeded expectations",
-        "meta discussion about asking questions like I will try to be more specific next time sorry for vague question",
-        "brief positive acknowledgment response like I hope so fingers crossed hopefully that works",
-        "brief acknowledgment like got it understood okay cool sounds good I see",
+    META_INSTRUCTION_CATEGORY_DESCRIPTIONS = [
+        "thanks thank you appreciate helpful got it understand makes sense okay cool sounds good",
+        "please excuse me sorry hope you well no worries all good polite",
+        "yes correct absolutely agree exactly right indeed totally completely agreement",
+        "goodbye see you later talk soon have great day take care bye farewell",
+        "gratitude appreciation help grateful assistance exceeded expectations thanks much",
+        "apology previous messages sorry confusion let me clarify what I meant clarification",
+        "asking better questions will try be more specific vague question meta",
+        "format output return structure as JSON YAML CSV table list markdown formatting instruction",
+        "adjust response make shorter longer simpler detailed bullet points numbered list style",
+        "rewrite rephrase translate summarize paraphrase previous response output answer instruction",
+        "change tone formal casual technical professional explain like five years old tone",
     ]
     
     FACTUAL_QUERY_CATEGORY_DESCRIPTIONS = [
-        "definition question asking what is something what does term mean explain concept define word without personal context",
-        "factual information request about dates events history geography science facts trivia without personal relevance application",
-        "general how-to question asking for instructions steps process recipe procedure without personal needs circumstances",
-        "theoretical explanation request about why how things work abstract concepts principles without personal application career",
-        "comparison question asking differences between options technologies concepts products services without personal preference situation decision",
-        "who what when where question about historical figures famous people events discoveries inventions without personal connection",
-        "multiple questions about same topic with numbered list several parts complex multi-part query with bullet points",
-        "academic theoretical question with multiple sub-questions breaking down topic into components without personal project work",
-        "scientific explanation request about natural phenomena physics chemistry biology astronomy without personal research study",
-        "general knowledge query about capitals countries populations currencies geography facts without travel plans personal interest",
-        "abstract technology comparison like difference between Python Java without I am choosing or I work with",
-        "theoretical programming question about best practices clean code principles without my project codebase work",
-        "explain how works question like explain blockchain neural networks quantum mechanics without personal learning goal",
-    ]
-    
-    OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS = [
-        "instruction to format output as JSON YAML CSV table list markdown code block specific data structure",
-        "request to adjust response style length like make it shorter longer simpler more detailed bullet points numbered list",
-        "command to rewrite rephrase translate summarize previous response output",
-        "request to change tone presentation like be more formal casual technical professional explain like I am five",
+        "What is How does Why Explain Define question seeking knowledge photosynthesis internet blockchain concept",
+        "Explain how internet works photosynthesis works hash tables work protocols architecture question seeking explanation",
+        "question dates events history geography science When did Who discovered What happened inquiry factual",
+        "how-to question instructions steps process recipe How do you make How to change general inquiry",
+        "How does work What is question about concepts hash tables HTTPS encryption TCP UDP REST API architecture",
+        "What is difference between Compare question differences RAM ROM Python Java TCP UDP comparison inquiry",
+        "Who What When Where question historical figures events Who invented When was inquiry factual",
+        "Explain How What Why question understanding concepts neural networks seasons photosynthesis data structures",
+        "How do work question about systems architecture concepts databases dependency injection REST API protocols",
+        "What How Why Who When Where Explain Define question seeking factual general knowledge information",
     ]
     
     PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS = [
-        "arithmetic calculation with explicit numbers like calculate 15 percent of 250 solve 45 times 67",
-        "mathematical expression evaluation with operators like 2 plus 3 times 4 divided by 5 what is 123 times 456",
-        "unit conversion with specific values like convert 100 kilometers to miles 72 fahrenheit to celsius",
-        "percentage calculation with explicit numbers like what is 25 percent of 800 discount price",
-        "algebra equation solving with explicit numbers like solve for x in equation 2x plus 5 equals 15",
-        "geometry calculation with specific measurements like area of circle radius 5 volume of cube side 10",
+        "pure arithmetic explicit numbers calculate 15 percent of 250 solve 45 times 67 multiply add subtract divide numeric",
+        "mathematical expression numbers operators 2 plus 3 times 4 divided by 5 what is 123 times 456 numeric calculation",
+        "unit conversion numeric values convert 100 kilometers to miles 72 fahrenheit to celsius degrees metric imperial numbers",
+        "percentage calculation explicit numbers what is 25 percent of 800 discount price 30 off numeric percentage",
+        "algebra equation explicit numbers solve for x in equation 2x plus 5 equals 15 quadratic formula numeric values",
+        "geometry calculation numeric measurements area of circle radius 5 volume of cube side 10 circumference numeric dimensions",
     ]
     
     EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS = [
-        "translation instruction with text to translate like translate this to Spanish Hello how are you in quotes or brackets",
-        "translation request with provided phrase like how do you say good morning in French with explicit text",
-        "language conversion with text block like convert this English text to Japanese followed by content",
-        "phrase translation with quoted or bracketed text like translate I am hungry to Mandarin with explicit phrase",
-        "sentence translation with actual text like what is Spanish translation of sentence how to say specific phrase in Italian",
-        "translation with colon separator like Translate to German colon followed by English sentence or text",
-        "language translation with explicit source text in quotes brackets or after colon separator",
+        "translation instruction with word translate and explicit text to translate in quotes brackets like translate this Hello how are you",
+        "translation request how do you say specific word phrase in language like how do you say thank you in Spanish French German",
+        "language conversion with word translate convert and text block source text followed by content",
+        "phrase translation with quoted bracketed text translate I am hungry to French Spanish translate explicit phrase",
+        "sentence translation with word translate translation and actual source text what is translation of I love you to Italian",
+        "translation with colon separator translate colon followed by sentence or text source language to target language",
+        "language translation with explicit source text in quotes brackets after colon translate to Spanish French German Italian Japanese",
+        "translate followed by colon and explicit text Translate colon Where is the train station to Portuguese",
+        "how to say specific word phrase in foreign language like how to say computer in French hello in Spanish",
+        "translate paragraph text with word translate and following paragraph colon This is test translate to",
     ]
     
     GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS = [
@@ -440,26 +434,19 @@ class SkipDetector:
         "health information about medical conditions treatments ongoing health situations physical attributes or personal wellness",
         "personal question seeking advice about specific individual life situations relationships family decisions or personal circumstances",
         "request for recommendations based on stated personal context preferences needs situation location or individual requirements",
-        "learning statement expressing personal interest in understanding something new as part of career transition or personal development",
+        "learning statement expressing personal interest in understanding something new as part of career transition personal development my course my class my school certification",
         "question about helping family member child spouse or relative with their interests education or personal needs",
-        "statement about personal challenges struggles confusion with work tasks technology language learning or skill development in personal context",
-        "expression of personal difficulty with writing grammar language skills at job workplace or in professional setting",
-        "personal language learning like I am learning Spanish for move or taking French lessons for job with personal motivation",
-        "studying language for personal reason like learning Mandarin because my wife speaks it or studying German for university",
-        "personal tech struggle at work like I am having trouble with React at my job or confused about framework at my workplace",
-        "career anxiety or stress about technology skills like struggling with imposter syndrome feeling overwhelmed at new technical job",
-        "personal request for help with specific technology problem at job workplace or in personal project with named context",
+        "statement about personal challenges struggles confusion anxiety with work tasks technology language skills writing grammar at job workplace or in professional setting career imposter syndrome",
+        "personal language learning like I am learning Spanish for move taking French lessons for job studying Mandarin because my wife speaks it German for university with personal motivation",
+        "personal request for help with specific technology problem at job workplace or in personal project with named context like I am having trouble with React at my job",
         "planning party celebration event for my child family member with specific personal context like my daughter birthday my son graduation",
-        "learning for my course my class my school with personal educational context like understanding quantum computing for my physics course",
-        "help me understand technology for my personal learning my education my certification with career development or school context",
     ]
 
     class SkipReason(Enum):
         SKIP_SIZE = "SKIP_SIZE"
         SKIP_TECHNICAL = "SKIP_TECHNICAL"
-        SKIP_META = "SKIP_META"
+        SKIP_META_INSTRUCTION = "SKIP_META_INSTRUCTION"
         SKIP_FACTUAL_QUERY = "SKIP_FACTUAL_QUERY"
-        SKIP_OUTPUT_FORMATTING = "SKIP_OUTPUT_FORMATTING"
         SKIP_PURE_MATH = "SKIP_PURE_MATH"
         SKIP_TRANSLATION = "SKIP_TRANSLATION"
         SKIP_GRAMMAR_PROOFREAD = "SKIP_GRAMMAR_PROOFREAD"
@@ -467,9 +454,8 @@ class SkipDetector:
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
         SkipReason.SKIP_TECHNICAL: "💻 Technical Content Detected, skipping memory operations",
-        SkipReason.SKIP_META: "💬 Conversational Filler Detected, skipping memory operations",
+        SkipReason.SKIP_META_INSTRUCTION: "💬 Meta-Instruction Detected, skipping memory operations",
         SkipReason.SKIP_FACTUAL_QUERY: "📚 General Knowledge Query Detected, skipping memory operations",
-        SkipReason.SKIP_OUTPUT_FORMATTING: "🎨 Format Instruction Detected, skipping memory operations",
         SkipReason.SKIP_PURE_MATH: "🔢 Mathematical Calculation Detected, skipping memory operations",
         SkipReason.SKIP_TRANSLATION: "🌐 Translation Request Detected, skipping memory operations",
         SkipReason.SKIP_GRAMMAR_PROOFREAD: "📝 Grammar/Proofreading Request Detected, skipping memory operations",
@@ -490,20 +476,14 @@ class SkipDetector:
                 show_progress_bar=False
             )
             
-            meta_embeddings = self.embedding_model.encode(
-                self.META_CONVERSATION_CATEGORY_DESCRIPTIONS,
+            meta_instruction_embeddings = self.embedding_model.encode(
+                self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
                 show_progress_bar=False
             )
             
             factual_query_embeddings = self.embedding_model.encode(
                 self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS,
-                convert_to_tensor=True,
-                show_progress_bar=False
-            )
-            
-            output_formatting_embeddings = self.embedding_model.encode(
-                self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
                 show_progress_bar=False
             )
@@ -534,9 +514,8 @@ class SkipDetector:
             
             self._reference_embeddings = {
                 'technical': technical_embeddings,
-                'meta': meta_embeddings,
+                'meta_instruction': meta_instruction_embeddings,
                 'factual_query': factual_query_embeddings,
-                'output_formatting': output_formatting_embeddings,
                 'pure_math': pure_math_embeddings,
                 'translation': translation_embeddings,
                 'grammar': grammar_embeddings,
@@ -545,9 +524,8 @@ class SkipDetector:
             
             total_skip_categories = (
                 len(self.TECHNICAL_CATEGORY_DESCRIPTIONS) + 
-                len(self.META_CONVERSATION_CATEGORY_DESCRIPTIONS) +
+                len(self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS) +
                 len(self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS) +
-                len(self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS) +
                 len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS) +
                 len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS) +
                 len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
@@ -586,18 +564,25 @@ class SkipDetector:
         # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
         separator_patterns = ['---', '===', '___', '***']
         for pattern in separator_patterns:
-            if pattern * 3 in message.replace(' ', ''):
+            if message.count(pattern) >= 2:
                 return self.SkipReason.SKIP_TECHNICAL.value
         
         # Pattern 4: Command-line patterns with context-aware detection
         lines_stripped = [line.strip() for line in message.split('\n') if line.strip()]
-        if lines_stripped and len(lines_stripped) >= 3:
+        if lines_stripped:
             actual_command_lines = 0
             for line in lines_stripped:
                 if line.startswith('$ ') and len(line) > 2:
                     parts = line[2:].split()
                     if parts and parts[0].isalnum():
                         actual_command_lines += 1
+                # Check for lines with embedded $ commands (e.g., "Run: $ command")
+                elif '$ ' in line:
+                    dollar_index = line.find('$ ')
+                    if dollar_index > 0 and line[dollar_index-1] in (' ', ':', '\t'):
+                        parts = line[dollar_index+2:].split()
+                        if parts and len(parts[0]) > 0 and (parts[0].isalnum() or parts[0] in ['curl', 'wget', 'git', 'npm', 'pip', 'docker']):
+                            actual_command_lines += 1
                 elif line.startswith('# ') and len(line) > 2:
                     rest = line[2:].strip()
                     if rest and not rest[0].isupper() and ' ' in rest:
@@ -605,6 +590,9 @@ class SkipDetector:
                 elif line.startswith('> ') and len(line) > 2:
                     pass
             
+            # Lowered threshold: even 1 command line with URL/pipe is technical
+            if actual_command_lines >= 1 and any(c in message for c in ['http://', 'https://', ' | ']):
+                return self.SkipReason.SKIP_TECHNICAL.value
             if actual_command_lines >= 3:
                 return self.SkipReason.SKIP_TECHNICAL.value
         
@@ -621,9 +609,28 @@ class SkipDetector:
         if markup_chars >= 6:
             if markup_chars / msg_len > 0.10:
                 return self.SkipReason.SKIP_TECHNICAL.value
+            # Special check for JSON-like structures (many nested braces)
+            # Even with low density, if we have lots of curly braces, it's likely JSON
+            curly_count = message.count('{') + message.count('}')
+            if curly_count >= 10:
+                return self.SkipReason.SKIP_TECHNICAL.value
         
-        # Pattern 7: Highly structured multi-line content (require markup chars for technical confidence)
+        # Pattern 7: Structured nested content with colons (key: value patterns)
         line_count = message.count('\n')
+        if line_count >= 8:  # At least 8 lines
+            lines = message.split('\n')
+            non_empty_lines = [line for line in lines if line.strip()]
+            if non_empty_lines:
+                # Count lines with colon patterns (key: value or similar)
+                colon_lines = sum(1 for line in non_empty_lines if ':' in line and not line.strip().startswith('#'))
+                indented_lines = sum(1 for line in non_empty_lines if line.startswith((' ', '\t')))
+                
+                # If most lines have colons and indentation, it's structured data
+                if (colon_lines / len(non_empty_lines) > 0.4 and 
+                    indented_lines / len(non_empty_lines) > 0.5):
+                    return self.SkipReason.SKIP_TECHNICAL.value
+        
+        # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
         if line_count > 15:
             lines = message.split('\n')
             non_empty_lines = [line for line in lines if line.strip()]
@@ -639,7 +646,7 @@ class SkipDetector:
                     if any(keyword in message.lower() for keyword in technical_keywords):
                         return self.SkipReason.SKIP_TECHNICAL.value
         
-        # Pattern 8: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
+        # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
         if line_count >= 3:
             lines = message.split('\n')
             non_empty_lines = [line for line in lines if line.strip()]
@@ -650,7 +657,7 @@ class SkipDetector:
                     if any(indicator in message.lower() for indicator in code_indicators):
                         return self.SkipReason.SKIP_TECHNICAL.value
         
-        # Pattern 9: Very high special character ratio (encoded data, technical output)
+        # Pattern 10: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
             special_chars = sum(1 for c in message if not c.isalnum() and not c.isspace())
             special_ratio = special_chars / msg_len
@@ -699,13 +706,12 @@ class SkipDetector:
             max_conversational_similarity = float(conversational_similarities.max())
             
             skip_categories = [
-                ('output_formatting', self.SkipReason.SKIP_OUTPUT_FORMATTING, self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS),
-                ('pure_math', self.SkipReason.SKIP_PURE_MATH, self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS),
+                ('meta_instruction', self.SkipReason.SKIP_META_INSTRUCTION, self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS),
                 ('translation', self.SkipReason.SKIP_TRANSLATION, self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS),
                 ('grammar', self.SkipReason.SKIP_GRAMMAR_PROOFREAD, self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS),
-                ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
-                ('meta', self.SkipReason.SKIP_META, self.META_CONVERSATION_CATEGORY_DESCRIPTIONS),
                 ('factual_query', self.SkipReason.SKIP_FACTUAL_QUERY, self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS),
+                ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
+                ('pure_math', self.SkipReason.SKIP_PURE_MATH, self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS),
             ]
             
             for cat_key, skip_reason, descriptions in skip_categories:
