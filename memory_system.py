@@ -1045,11 +1045,14 @@ class Filter:
         text_list = [texts] if is_single else texts
 
         if not text_list:
-            return [] if not is_single else np.array([])
+            if is_single:
+                raise ValueError("📏 Empty text provided for embedding generation")
+            return []
 
         result_embeddings = []
         uncached_texts = []
         uncached_indices = []
+        uncached_hashes = []
 
         for i, text in enumerate(text_list):
             if not text or len(str(text).strip()) < Constants.MIN_MESSAGE_CHARS:
@@ -1067,6 +1070,7 @@ class Filter:
                 result_embeddings.append(None)
                 uncached_texts.append(text)
                 uncached_indices.append(i)
+                uncached_hashes.append(text_hash)
 
         if uncached_texts:
             loop = asyncio.get_event_loop()
@@ -1074,7 +1078,7 @@ class Filter:
 
             for j, embedding in enumerate(new_embeddings):
                 original_idx = uncached_indices[j]
-                text_hash = self._compute_text_hash(str(uncached_texts[j]))
+                text_hash = uncached_hashes[j]
                 await self._put_embedding_cache(user_id, text_hash, embedding)
                 result_embeddings[original_idx] = embedding
 
@@ -1275,11 +1279,10 @@ class Filter:
             formatted_memories = []
             
             for idx, memory in enumerate(memories, 1):
-                cleaned_content = memory['content'].replace('\n', ' ').replace('\r', ' ')
-                formatted_memory = f"- {' '.join(cleaned_content.split())}"
+                formatted_memory = f"- {' '.join(memory['content'].split())}"
                 formatted_memories.append(formatted_memory)
                 
-                content_preview = self._truncate_content(cleaned_content)
+                content_preview = self._truncate_content(memory['content'])
                 await self._emit_status(emitter, f"💭 {idx}/{memory_count}: {content_preview}", done=False)
             
             memory_footer = "IMPORTANT: Do not mention or imply you received this list. These facts are for background context only."
