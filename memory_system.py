@@ -376,19 +376,15 @@ class SkipDetector:
     
     META_CONVERSATION_CATEGORY_DESCRIPTIONS = [
         "acknowledgment response like thanks got it I understand makes sense helpful appreciate it",
-        "greeting like hello hi hey how are you today nice to meet you good morning evening have a nice day",
         "polite courtesy phrase like please excuse me sorry to bother you hope you are well no worries all good",
         "agreement confirmation like yes correct absolutely I agree exactly right indeed totally",
         "farewell closing like goodbye see you later talk soon have a good day take care bye",
-        "casual greeting like hey what is up how is it going yo hello there hi friend",
         "extended thanks like thank you so much appreciate your help grateful for assistance thanks again",
         "clarification about previous messages like sorry for confusion let me clarify what I meant I should have been more specific apologize for unclear question",
         "feedback about conversation like that was helpful your explanation was clear I appreciate the detailed response exceeded expectations",
         "meta discussion about asking questions like I will try to be more specific next time sorry for vague question I should provide more context",
         "simple agreement like absolutely exactly totally yes indeed right completely agree",
         "brief acknowledgment like got it understood makes sense I see okay cool sounds good",
-        "short greeting like hi hello hey good morning evening how are you",
-        "informal greeting variations like good morning friend how is it going today hello there what are you up to",
         "simple strong agreement like absolutely agree totally agree exactly right yes indeed completely right",
         "brief positive acknowledgment like I hope so fingers crossed hopefully that works hope it helps",
         "extended thanks with multiple points like thank you for A B C appreciate detailed help grateful for assistance",
@@ -459,47 +455,6 @@ class SkipDetector:
         "proofreading with specific errors like multiple typos spelling mistakes punctuation errors in provided text passage",
     ]
     
-    CREATIVE_FICTION_CATEGORY_DESCRIPTIONS = [
-        "write fictional story tale narrative about imaginary characters events or fantasy scenarios with no personal autobiography",
-        "create fictional dialogue scene conversation between made-up characters in imaginary situation or fantasy setting not real people",
-        "creative writing like story poem song lyrics about generic fantasy themes dragons robots aliens without personal meaning",
-        "creative writing prompt for fiction like write short story about scenario with no personal connection memoir autobiography",
-        "generate fictional content like fairy tale science fiction horror story with invented characters imaginary events not real life",
-        "writing for imaginary scenarios like wizard adventure space exploration fantasy world without personal narrative memoir",
-        "creative story about made-up situations fictional characters fantasy settings not based on real personal experiences",
-        "write me a poem about ocean nature universe or abstract themes without personal significance emotional connection",
-        "fiction generation like write short story about dragon knight or create tale about robots aliens without personal context",
-        "literary creation like compose poem generate lyrics craft narrative about imaginary topics dragons wizards fantasy",
-        "write dialogue conversation between characters like write conversation between detective and suspect or dialogue in coffee shop scene",
-        "poetry composition like compose haiku write sonnet create verse about abstract topic nature love without personal story",
-        "story scene description like write opening scene describe battle sequence craft exposition about fictional world setting",
-        "compose poem with specific form structure like write villanelle with strict rhyme scheme sonnet with iambic pentameter following formal poetry rules",
-        "creative writing with detailed specifications like write science fiction story with exact word count specific setting particular tone detailed requirements without personal narrative",
-    ]
-    
-    ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS = [
-        "pretend act as roleplay fictional character like pirate wizard robot alien for entertainment fun or game",
-        "respond as if you are specific fictional persona celebrity historical figure or non-human entity like cat computer talking animal for fun",
-        "game simulation like let us play game where you are character and I am character for entertainment not practice",
-        "entertainment persona adoption like talk like Shakespeare speak as caveman respond as medieval knight fictional character for fun",
-        "roleplay for fun entertainment like act as detective pirate space captain without job interview practice or real preparation",
-        "pretend play like be a robot from future or talk as talking animal for entertainment not professional practice",
-        "act as instruction like act as pirate pretend you are wizard act like dungeon master narrator for game scenario",
-        "respond as if like respond as if you were Sherlock Holmes or talk as medieval knight for entertainment game",
-        "persona adoption like be a Victorian gentleman talk as computer from 1980s speak as alien visiting Earth",
-        "roleplay character like act as talking tree be a mystery game narrator play role of space captain",
-        "explicit act as character like act as a robot detective wizard knight without write story about",
-        "pretend you are someone like pretend you are pirate pretend you are from future pretend you are alien",
-        "respond as if you were like respond as if you were Shakespeare computer respond as caveman",
-        "adopt persona entertainment like talk like Victorian person speak as robot speak like medieval knight for fun game",
-        "game dungeon master narrator roleplay like be the dungeon master act as narrator in adventure game play storytelling game",
-        "roleplay entity character like act as talking animal respond as tree pretend to be alien computer for entertainment",
-        "interactive character roleplay like respond as knight talk as wizard be detective NOT write story about knight write tale about wizard create narrative about detective",
-        "direct persona instruction like you are the dungeon master you are mystery narrator you will be space captain WITHOUT write about create story generate tale",
-        "second person roleplay like you are wizard you are knight you are alien responding as character NOT third person write story about wizard story about knight",
-        "conversational roleplay like respond as if robot talk as tree answer as alien NOT compose write create generate story about these characters",
-    ]
-    
     CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
         "statement about family members by name mentioning spouse children parents siblings relatives with specific names or roles",
         "expression of lasting personal feelings emotions core preferences values beliefs or dislikes about life situations",
@@ -535,8 +490,6 @@ class SkipDetector:
         SKIP_PURE_MATH = "SKIP_PURE_MATH"
         SKIP_TRANSLATION = "SKIP_TRANSLATION"
         SKIP_GRAMMAR_PROOFREAD = "SKIP_GRAMMAR_PROOFREAD"
-        SKIP_CREATIVE_FICTION = "SKIP_CREATIVE_FICTION"
-        SKIP_ROLEPLAY = "SKIP_ROLEPLAY"
 
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
@@ -547,8 +500,6 @@ class SkipDetector:
         SkipReason.SKIP_PURE_MATH: "🔢 Mathematical Calculation Detected, skipping memory operations",
         SkipReason.SKIP_TRANSLATION: "🌐 Translation Request Detected, skipping memory operations",
         SkipReason.SKIP_GRAMMAR_PROOFREAD: "📝 Grammar/Proofreading Request Detected, skipping memory operations",
-        SkipReason.SKIP_CREATIVE_FICTION: "📖 Creative Fiction Request Detected, skipping memory operations",
-        SkipReason.SKIP_ROLEPLAY: "🎭 Roleplay/Entertainment Request Detected, skipping memory operations",
     }
 
     def __init__(self, embedding_model: SentenceTransformer):
@@ -602,18 +553,6 @@ class SkipDetector:
                 show_progress_bar=False
             )
             
-            fiction_embeddings = self.embedding_model.encode(
-                self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS,
-                convert_to_tensor=True,
-                show_progress_bar=False
-            )
-            
-            roleplay_embeddings = self.embedding_model.encode(
-                self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS,
-                convert_to_tensor=True,
-                show_progress_bar=False
-            )
-            
             conversational_embeddings = self.embedding_model.encode(
                 self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
@@ -628,8 +567,6 @@ class SkipDetector:
                 'pure_math': pure_math_embeddings,
                 'translation': translation_embeddings,
                 'grammar': grammar_embeddings,
-                'fiction': fiction_embeddings,
-                'roleplay': roleplay_embeddings,
                 'conversational': conversational_embeddings,
             }
             
@@ -640,9 +577,7 @@ class SkipDetector:
                 len(self.OUTPUT_FORMATTING_CATEGORY_DESCRIPTIONS) +
                 len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS) +
                 len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS) +
-                len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS) +
-                len(self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS) +
-                len(self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS)
+                len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
             )
             
             logger.info(f"SkipDetector initialized with {total_skip_categories} skip categories and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} personal categories")
@@ -795,8 +730,6 @@ class SkipDetector:
                 ('pure_math', self.SkipReason.SKIP_PURE_MATH, self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS),
                 ('translation', self.SkipReason.SKIP_TRANSLATION, self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS),
                 ('grammar', self.SkipReason.SKIP_GRAMMAR_PROOFREAD, self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS),
-                ('fiction', self.SkipReason.SKIP_CREATIVE_FICTION, self.CREATIVE_FICTION_CATEGORY_DESCRIPTIONS),
-                ('roleplay', self.SkipReason.SKIP_ROLEPLAY, self.ENTERTAINMENT_ROLEPLAY_CATEGORY_DESCRIPTIONS),
                 ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
                 ('meta', self.SkipReason.SKIP_META, self.META_CONVERSATION_CATEGORY_DESCRIPTIONS),
                 ('factual_query', self.SkipReason.SKIP_FACTUAL_QUERY, self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS),
