@@ -343,142 +343,74 @@ class SkipDetector:
     """Semantic-based content classifier using zero-shot classification with category descriptions."""
     
     TECHNICAL_CATEGORY_DESCRIPTIONS = [
-        "Python code def class import return function calculates Fibonacci dynamic programming algorithm implementation optimization",
+        "Python JavaScript TypeScript React code def class import return function const let var JSX useState useEffect hooks component calculates Fibonacci dynamic programming algorithm implementation optimization",
         "singleton pattern thread-safe lazy initialization design pattern factory builder observer strategy implementation structure",
-        "JavaScript React code const let var function JSX return useState useEffect hooks component implementation",
         "error exception traceback TypeError NullPointerException IndexError segmentation fault core dumped stack overflow output",
         "HTTP 404 not found 500 server error 403 forbidden 401 unauthorized resource failed endpoint API error response",
-        "terminal command line shell dollar sudo apt-get npm install docker run git clone commands execution",
-        "JSON object curly braces nested data array key colon value syntax structure parsing serialization",
-        "configuration file YAML nested properties database connection settings host port credentials environment variables config",
+        "terminal command line shell dollar sudo apt-get npm install docker run git clone kubectl cargo commands execution",
+        "JSON XML YAML object curly braces nested data array key colon value syntax structure parsing serialization configuration file",
         "WebSocket connection established on port 8080 binary message protocol real-time bidirectional server client communication",
-        "REST API endpoint POST GET PUT DELETE PATCH request response payload authentication bearer token header",
-        "GraphQL mutation query fragment schema resolver field argument type implementation syntax structure definition",
-        "file path directory /etc /var /usr /home /lib config log bin system32 absolute relative path",
-        "algorithm uses binary search tree O(log n) time complexity space hash table array implementation",
+        "REST API GraphQL endpoint POST GET PUT DELETE PATCH mutation query request response payload authentication bearer token header",
+        "file path directory /etc /var /usr /home /lib /home config log bin system32 absolute relative path C:\\ Windows",
+        "algorithm uses binary search tree O(log n) time complexity space hash table array implementation data structures",
         "markdown horizontal rule separator dashes equals asterisks underscores heading code block syntax formatting",
         "code block indentation whitespace tabs spaces nested function body class method formatted structure syntax",
-        "Kubernetes Docker container deployment manifest spec replicas image registry pods orchestration cluster namespace",
-        "SQL query statement select insert update delete join where table column row index primary key syntax",
-        "log output INFO WARN ERROR DEBUG timestamp level server started on port connection failed memory usage",
-        "stack trace at line number module file raised exception caught unhandled error debugging trace traceback",
+        "Kubernetes Docker container deployment manifest spec replicas image registry pods orchestration cluster namespace ECR ECS",
+        "SQL query statement select insert update delete join where table column row index primary key ALTER CREATE DROP syntax",
+        "log output stack trace INFO WARN ERROR DEBUG timestamp level server started on port connection failed memory usage at line number module file raised exception caught unhandled error debugging",
         "regex pattern regular expression match groups capture backslash escape metacharacter wildcard quantifier character class",
-        "unit test pytest jest mocha assertion expect mock spy fixture describe it beforeEach testing framework suite",
-        "CI CD pipeline Jenkins GitHub Actions GitLab workflow build deploy test automation continuous integration delivery",
-        "TypeScript interface type generic extends implements compiler strict mode any unknown never declaration file",
-        "CSS stylesheet selector property value flexbox grid display responsive media query animation transform transition",
+        "unit test pytest jest mocha assertion expect mock spy fixture describe it beforeEach testing framework suite CI CD pipeline Jenkins GitHub Actions GitLab workflow build deploy automation",
         "database schema table primary key foreign key constraint index migration ALTER CREATE DROP INSERT UPDATE",
-        "git commit push pull merge branch conflict rebase cherry-pick HEAD origin master main develop repository remote",
-        "npm package.json dependencies devDependencies install build start script version node_modules webpack babel configuration",
-        "API response status code 200 404 500 headers body content-type JSON XML parsing serialization deserialization",
-        "AWS S3 bucket EC2 instance Lambda function CloudFormation stack template region availability zone IAM role",
-        "nginx apache server configuration virtual host proxy pass reverse redirect location upstream load balancer",
+        "git commit push pull merge branch conflict rebase cherry-pick HEAD origin master main develop repository remote npm package.json dependencies",
+        "AWS S3 bucket EC2 instance Lambda function CloudFormation stack template region availability zone IAM role nginx apache server configuration",
     ]
     
-    META_INSTRUCTION_CATEGORY_DESCRIPTIONS = [
-        "thanks thank you very much appreciate helpful assistance got it understand makes sense okay cool sounds good",
-        "please excuse me sorry apologies hope you well no worries all good polite courteous respectful",
-        "yes correct absolutely agree exactly right indeed totally completely agreement affirmative confirmation positive acknowledgment",
-        "goodbye see you later talk soon have great day take care bye farewell until next time",
-        "gratitude appreciation help grateful thankful assistance support exceeded expectations thanks much very helpful extremely appreciate",
-        "apology previous messages sorry confusion mistake let me clarify what I meant correction clarification explanation",
-        "asking better questions will try be more specific precise detailed clear vague question meta feedback improvement",
-        "format output return structure organize as JSON YAML CSV table list markdown formatting instruction style presentation",
-        "adjust response make shorter longer simpler detailed comprehensive bullet points numbered list style tone length format",
+    INSTRUCTION_CATEGORY_DESCRIPTIONS = [
+        "format output return structure organize as JSON YAML CSV table list markdown bullet points numbered list formatting instruction style presentation layout",
+        "adjust response make shorter longer simpler detailed comprehensive concise brief condensed summarized expand elaborate more depth trim down reduce length professional tone",
         "rewrite rephrase translate summarize paraphrase condense previous response output answer again differently instruction reformulate",
         "change tone formal casual technical professional friendly explain like five years old simple conversational academic style",
-        "can you explain that again repeat simpler words break down step by step clarify confused understand elaborate",
-        "give me bullet points numbered list step by step instructions table format organize structure layout presentation",
-        "make it shorter concise brief condensed summarized trim down reduce length compact minimize words simplify",
-        "expand elaborate more detail depth comprehensive thorough extensive explanation additional information context background complete",
-        "show example provide sample code demonstrate illustrate practical case scenario instance real-world application use case",
-        "continue keep going more add additional finish complete rest of remaining content conclusion end",
-        "stop enough that's sufficient adequate good for now pause hold on wait interrupt halt",
+        "can you explain that again repeat simpler words break down step by step clarify confused understand elaborate show example provide sample",
+        "continue keep going more add additional finish complete rest of remaining content conclusion end stop enough that's sufficient",
     ]
-    
-    FACTUAL_QUERY_CATEGORY_DESCRIPTIONS = [
-        "What is How does Why Explain Define question seeking knowledge information photosynthesis internet blockchain concept theory",
-        "Explain how internet works photosynthesis works hash tables work protocols architecture system mechanisms question seeking explanation",
-        "question dates events history geography science When did Who discovered What happened historical inquiry factual information",
-        "how-to question instructions steps process procedure recipe tutorial How do you make How to change general inquiry",
-        "How does work What is question about concepts mechanisms hash tables HTTPS encryption TCP UDP REST API architecture",
-        "What is difference between Compare contrast question differences similarities RAM ROM Python Java TCP UDP comparison inquiry",
-        "Who What When Where question historical figures events people Who invented When was discovered inquiry factual knowledge",
-        "Explain How What Why question understanding concepts principles neural networks seasons photosynthesis climate data structures",
-        "How do work question about systems architecture concepts technology databases dependency injection REST API protocols mechanisms",
-        "What How Why Who When Where Explain Define Tell me about question seeking factual general knowledge information",
-        "What causes climate change global warming greenhouse effect carbon dioxide emissions environmental science natural phenomenon",
-        "How does machine learning work neural network training gradient descent backpropagation algorithm artificial intelligence deep learning",
-        "Who was first president country leader founding fathers declaration independence constitution history government political figure",
-        "What is capital city of country location geography world map continent region area place",
-        "Explain theory of relativity quantum mechanics physics Einstein scientist black holes universe space time gravity",
-        "How to tie necktie knot change tire fix reset password bake cookies recipe general instructions tutorial",
-        "What does GDP mean acronym abbreviation definition terminology vocabulary business economics finance concept explanation",
-        "Why is sky blue ocean salty scientific explanation reason cause natural phenomenon physics chemistry question",
-        "Tell me about Roman Empire ancient civilization historical period culture world war events timeline history",
-        "What is best way to learn programming language study effectively tips advice recommendation general strategy method",
-        "How many countries in world population of country statistics data facts figures numbers demographic information",
-        "What are symptoms of flu diabetes cancer disease medical information health condition illness diagnosis treatment",
-        "Explain blockchain cryptocurrency Bitcoin mining Ethereum decentralized distributed ledger technology concept digital currency smart contracts",
-        "What is photosynthesis cellular respiration mitosis meiosis DNA biology process life science organism cell function",
-    ]
+
     
     PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS = [
-        "pure arithmetic explicit numbers calculate 15 percent of 250 solve 45 times 67 multiply add subtract divide numeric computation",
+        "pure arithmetic explicit numbers calculate solve multiply add subtract divide numeric computation what is 23 plus 456 minus 78 times 9 divided by 3 equals order operations 45 times 67",
         "mathematical expression numbers operators 2 plus 3 times 4 divided by 5 what is 123 times 456 numeric calculation arithmetic",
-        "unit conversion numeric values convert 100 kilometers to miles 72 fahrenheit to celsius degrees metric imperial measurement numbers",
-        "percentage calculation explicit numbers what is 25 percent of 800 discount price 30 off numeric percentage proportion",
+        "unit conversion numeric values convert 100 kilometers to miles 72 fahrenheit to celsius degrees metric imperial measurement numbers 5 feet 9 inches to centimeters meters height weight pounds kilograms",
+        "percentage calculation explicit numbers what is 25 percent of 800 15 percent of 250 discount price 30 off numeric percentage proportion 15 percent tip on 65.40 bill split check 4 people",
         "algebra equation explicit numbers solve for x variable in equation 2x plus 5 equals 15 quadratic formula numeric values",
-        "geometry calculation numeric measurements area of circle radius 5 volume of cube side 10 circumference perimeter numeric dimensions",
-        "tip calculation restaurant bill 87.50 dollars 15 percent 18 percent 20 percent gratuity service charge amount numeric",
-        "compound interest calculate savings 5000 dollars annual rate 4 percent years investment growth principal numeric financial calculation",
-        "mortgage payment monthly calculate 300000 loan 30 years interest rate 3.5 percent amortization schedule numeric financial math",
-        "what is square root of 144 256 cube root 27 64 exponent power 2 3 calculation numeric",
-        "statistics mean median mode average standard deviation dataset numbers 12 15 18 20 22 calculate distribution numeric",
-        "probability chance odds rolling dice flipping coin percentage likelihood random event outcome numeric statistical calculation",
-        "what is 23 plus 456 minus 78 times 9 divided by 3 equals order operations arithmetic numeric calculation",
-        "convert 5 feet 9 inches to centimeters meters height weight pounds kilograms imperial metric conversion numeric measurement",
-        "calculate BMI body mass index weight 180 pounds height 5 feet 10 inches health metric numeric formula",
-        "how many days hours minutes between January 15 and March 20 date time difference calculation duration numeric",
-        "what is 15 percent tip on 65.40 bill split check 4 people each pays amount numeric calculation",
+        "geometry calculation numeric measurements area of circle radius 5 volume of cube side 10 circumference perimeter numeric dimensions square root of 144 256 cube root 27 64",
+        "compound interest calculate savings 5000 dollars annual rate 4 percent years investment growth principal mortgage payment monthly 300000 loan 30 years numeric financial calculation",
+        "statistics mean median mode average standard deviation dataset numbers 12 15 18 20 22 calculate distribution probability chance odds numeric",
+        "calculate BMI body mass index weight 180 pounds height 5 feet 10 inches health metric numeric formula how many days hours minutes between dates time difference duration",
     ]
+
     
     EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS = [
-        "translation instruction with word translate and explicit text to translate in quotes brackets like translate this Hello how are you to Spanish",
-        "translation request how do you say specific word phrase expression in language like how do you say thank you in Spanish French German",
+        "translation instruction with word translate and explicit text to translate in quotes brackets like translate this Hello how are you to Spanish French German Italian Japanese Chinese Portuguese",
+        "translation request how do you say specific word phrase expression in language like how do you say thank you computer hello goodbye in Spanish French German Japanese",
         "language conversion with word translate convert and text block paragraph source text followed by target language content translation",
-        "phrase translation with quoted bracketed text translate I am hungry to French Spanish translate explicit phrase sentence language",
-        "sentence translation with word translate translation and actual source text what is translation of I love you to Italian Portuguese",
-        "translation with colon separator translate colon followed by sentence or text source language to target language output result",
-        "language translation with explicit source text in quotes brackets after colon translate to Spanish French German Italian Japanese Chinese",
-        "translate followed by colon and explicit text Translate colon Where is the train station bathroom to Portuguese Arabic Russian",
-        "how to say specific word phrase expression in foreign language like how to say computer hello goodbye in French Spanish",
-        "translate paragraph text block with word translate and following paragraph colon This is test sentence translate to target language",
-        "translate the following sentence paragraph text to Spanish French German Italian Japanese Chinese Arabic Russian Korean Portuguese",
-        "what is French Spanish German Italian word for computer house beautiful thank you hello goodbye common phrase translation",
-        "convert this text sentence paragraph to another language translate sentence paragraph passage to target foreign language output",
-        "how do I say in Spanish French German where is bathroom I need help please emergency phrase translation",
-        "translate quote sentence The quick brown fox jumps over lazy dog to language target output result",
-        "give me Japanese Spanish German French Italian translation of specific quoted text passage sentence paragraph block",
+        "phrase sentence translation with quoted bracketed text translate I am hungry Where is the train station to French Spanish Portuguese Arabic Russian Japanese",
+        "what is translation of explicit source text I love you The quick brown fox to Italian Portuguese Japanese Chinese language target output result",
+        "translate the following sentence paragraph text to Spanish French German Italian Japanese Chinese Arabic Russian Korean Portuguese give me translation of specific text",
+        "what is French Spanish German Italian Japanese Portuguese word for computer house beautiful thank you hello goodbye common phrase translation",
+        "convert this text sentence paragraph to another language translate sentence paragraph passage to target foreign language output how do I say in foreign language",
     ]
+
     
     GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS = [
-        "proofreading request with incorrect text like fix grammar spelling in this here is my draft check for typos errors in quoted text passage",
-        "grammar correction with specific wrong text or sentence like She don't like Their going too the store incorrect verb tense agreement",
-        "spelling punctuation check with specific text to review and fix errors mistakes in provided passage paragraph document content",
-        "copy editing with text like proofread this paragraph correct errors fix mistakes typos in text block document passage content",
-        "error correction like check this text for mistakes review sentence for grammar problems spelling issues with text passage included",
-        "typo fixing with text containing errors mistakes like Teh quick brown fox check spelling punctuation in this paragraph document",
-        "sentence correction with wrong grammar like fix this I has three book correct the punctuation comma splice run-on fragment",
-        "check my writing for grammar spelling mistakes errors typos in this text passage essay document paper content review",
-        "is this sentence correct grammatically proper accurate Their going to they're house there their they're usage grammar question",
-        "proofread my email letter essay document with provided text content check clarity flow coherence readability grammar spelling punctuation",
-        "improve my writing make this better more professional formal academic casual style tone clarity conciseness readability enhancement",
-        "correct punctuation comma splice run-on sentence fragment capitalization errors apostrophe quotation marks period semicolon colon usage",
-        "word choice suggestion better alternative synonym replace improve vocabulary diction phrasing expression more precise accurate appropriate",
-        "does this make sense is this clear understandable readable coherent logical phrasing sentence structure paragraph organization flow",
-        "active voice passive voice sentence structure parallel construction subject verb agreement tense consistency revision grammar syntax",
+        "proofreading request with incorrect text like fix grammar spelling in this here is my draft check for typos errors in quoted text passage proofread this paragraph Teh quick brown fox misspelling",
+        "grammar correction with specific wrong text or sentence like She don't like Their going too the store I has three book incorrect verb tense agreement subject verb agreement",
+        "spelling punctuation check with specific text to review and fix errors mistakes typos in provided passage paragraph document content check spelling punctuation in this",
+        "error correction like check this text for mistakes review sentence for grammar problems spelling issues with text passage included comma splice run-on fragment",
+        "is this sentence correct grammatically proper accurate Their going to they're house there their they're usage grammar question does this make sense clear understandable",
+        "proofread my email letter essay document with provided text content check clarity flow coherence readability grammar spelling punctuation improve my writing make better",
+        "correct punctuation comma splice run-on sentence fragment capitalization errors apostrophe quotation marks period semicolon colon usage missing punctuation",
+        "word choice suggestion better alternative synonym replace improve vocabulary diction phrasing expression more precise accurate appropriate active voice passive voice parallel construction",
     ]
+
     
     CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
         "statement about family members by name mentioning spouse children parents siblings relatives grandparents with specific names or family roles relationships",
@@ -488,8 +420,8 @@ class SkipDetector:
         "major life plans important personal goals long-term aspirations meaningful future intentions life decisions dreams objectives achievements milestones",
         "personal decision experience choice about important life matters relationships family career health or individual circumstances situations",
         "meaningful personal story memory reflection about significant past life experiences events milestones moments that shaped the person",
-        "personal background information about hometown childhood upbringing education cultural heritage ethnicity or formative life experiences identity",
-        "health information about medical conditions treatments medications ongoing health situations physical attributes wellness fitness or personal healthcare",
+        "personal background information about hometown childhood upbringing education cultural heritage ethnicity or formative life experiences identity graduated from university college",
+        "health information about medical conditions treatments medications ongoing health situations physical attributes wellness fitness or personal healthcare diagnosed with condition",
         "personal question seeking advice about specific individual life situations relationships family decisions personal circumstances challenges problems",
         "request for recommendations based on stated personal context preferences needs situation location lifestyle or individual requirements specific constraints",
         "learning statement expressing personal interest in understanding something new as part of career transition personal development my course my class my school certification degree program studies",
@@ -499,9 +431,9 @@ class SkipDetector:
         "personal request for help with specific technology problem issue at job workplace or in personal project with named context like I am having trouble with React at my job working on website",
         "planning party celebration event for my child family member with specific personal context like my daughter birthday party my son graduation wedding anniversary family gathering",
         "relationship status change I got married engaged dating divorced separated with partner spouse boyfriend girlfriend fiancé specific person name relationship milestone",
-        "pet ownership statement I adopted got have dog cat bird fish hamster named specific name my pet family animal companion breed age characteristics",
-        "moving relocation I moved am moving to new city country state apartment house from previous location with personal reason context job family school",
-        "dietary preference restriction I am vegetarian vegan pescatarian gluten-free lactose intolerant allergic to with lasting personal commitment health ethical religious reasons",
+        "pet ownership statement I adopted got have dog cat bird fish hamster named specific name my pet family animal companion breed age characteristics prefer like love dislike pets",
+        "moving relocation I moved am moving to new city country state apartment house from previous location with personal reason context job family school live in specific city neighborhood",
+        "dietary preference restriction I am vegetarian vegan pescatarian gluten-free lactose intolerant allergic to with lasting personal commitment health ethical religious reasons food preferences love hate dislike favorite",
         "religious cultural practice I celebrate observe follow Christian Jewish Muslim Hindu Buddhist tradition faith belief spirituality religious identity cultural background",
         "living situation I live with roommate alone parents family partner bought rented house apartment condo studio living arrangements home environment",
         "transportation vehicle I drive own have car specific make model year commute to work school bike bicycle public transit metro bus train",
@@ -510,29 +442,18 @@ class SkipDetector:
         "personal project working on book writing novel screenplay painting drawing art music composition hobby with emotional investment meaningful creative pursuit passion",
         "skill development I am learning play guitar piano violin instrument speak language coding programming for personal fulfillment enjoyment growth self-improvement",
         "exercise fitness routine I go to gym run jog yoga pilates swimming regularly established consistent habit activity health wellness physical fitness",
-        "food preferences I love hate dislike favorite least favorite cuisine dish meal allergy intolerance lasting taste preference aversion dietary likes dislikes",
-        "work schedule I work night shift day shift remote from home office hybrid freelance part-time full-time hours schedule arrangement flexibility",
-        "education background I graduated from university college high school degree major minor studied at school institution certification program educational history",
-        "pet preferences I prefer like love dislike cats dogs birds fish reptiles animals specific type breed species characteristics personality traits",
-        "home life I live in specific city neighborhood area district near landmark location with context details geographic information residential area community",
+        "work schedule I work night shift day shift remote from home office hybrid freelance part-time full-time hours schedule arrangement flexibility night owl early bird morning person",
         "personal values I care about believe in strongly value support environment sustainability social justice equality causes activism principles ethics morals",
-        "medical history I have been diagnosed with condition disease illness taking medication prescription treatment therapy ongoing health situation chronic condition",
         "phobias fears I am afraid of scared terrified heights flying airplanes spiders insects enclosed spaces claustrophobia significant lasting fear anxiety",
         "personal achievements I got promoted received award won competition completed certification marathon project significant accomplishment milestone success recognition",
         "social preferences I am introvert extrovert ambivert prefer small groups large crowds parties socializing alone time solitude personality trait social behavior",
-        "sleep schedule I am night owl early bird morning person work late shift early shift sleep pattern routine circadian rhythm habits",
-        "workplace emotional struggle feeling overwhelmed anxious stressed burned out at my new job my first role position after graduating college at company startup worried not contributing enough asking too many questions feeling inadequate imposter syndrome",
-        "parenting milestone planning my daughter son child birthday party celebration she he loves dinosaurs T-Rex Triceratops princesses superheroes having it at local park venue with kids children from her his class school peanut allergy dietary restriction",
-        "career switch planning to change transition from marketing sales to data science software engineering taking online courses bootcamp in Python JavaScript machine learning for past six months year my marketing sales background previous experience",
-        "adopting rescue pet my husband wife partner and I thinking about considering adopting rescue shelter dog cat puppy kitten we live in two-bedroom apartment house work from home remote enjoy hiking running outdoor activities walking",
-        "personal learning for my physics chemistry biology course for my creative writing literature poetry class help me understand explain learn for my degree program major my university college assignment homework project paper",
     ]
+
 
     class SkipReason(Enum):
         SKIP_SIZE = "SKIP_SIZE"
         SKIP_TECHNICAL = "SKIP_TECHNICAL"
-        SKIP_META_INSTRUCTION = "SKIP_META_INSTRUCTION"
-        SKIP_FACTUAL_QUERY = "SKIP_FACTUAL_QUERY"
+        SKIP_INSTRUCTION = "SKIP_INSTRUCTION"
         SKIP_PURE_MATH = "SKIP_PURE_MATH"
         SKIP_TRANSLATION = "SKIP_TRANSLATION"
         SKIP_GRAMMAR_PROOFREAD = "SKIP_GRAMMAR_PROOFREAD"
@@ -540,8 +461,7 @@ class SkipDetector:
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
         SkipReason.SKIP_TECHNICAL: "💻 Technical Content Detected, skipping memory operations",
-        SkipReason.SKIP_META_INSTRUCTION: "💬 Meta-Instruction Detected, skipping memory operations",
-        SkipReason.SKIP_FACTUAL_QUERY: "📚 General Knowledge Query Detected, skipping memory operations",
+        SkipReason.SKIP_INSTRUCTION: "💬 Instruction Detected, skipping memory operations",
         SkipReason.SKIP_PURE_MATH: "🔢 Mathematical Calculation Detected, skipping memory operations",
         SkipReason.SKIP_TRANSLATION: "🌐 Translation Request Detected, skipping memory operations",
         SkipReason.SKIP_GRAMMAR_PROOFREAD: "📝 Grammar/Proofreading Request Detected, skipping memory operations",
@@ -562,14 +482,8 @@ class SkipDetector:
                 show_progress_bar=False
             )
             
-            meta_instruction_embeddings = self.embedding_model.encode(
-                self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS,
-                convert_to_tensor=True,
-                show_progress_bar=False
-            )
-            
-            factual_query_embeddings = self.embedding_model.encode(
-                self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS,
+            instruction_embeddings = self.embedding_model.encode(
+                self.INSTRUCTION_CATEGORY_DESCRIPTIONS,
                 convert_to_tensor=True,
                 show_progress_bar=False
             )
@@ -600,8 +514,7 @@ class SkipDetector:
             
             self._reference_embeddings = {
                 'technical': technical_embeddings,
-                'meta_instruction': meta_instruction_embeddings,
-                'factual_query': factual_query_embeddings,
+                'instruction': instruction_embeddings,
                 'pure_math': pure_math_embeddings,
                 'translation': translation_embeddings,
                 'grammar': grammar_embeddings,
@@ -610,8 +523,7 @@ class SkipDetector:
             
             total_skip_categories = (
                 len(self.TECHNICAL_CATEGORY_DESCRIPTIONS) + 
-                len(self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS) +
-                len(self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS) +
+                len(self.INSTRUCTION_CATEGORY_DESCRIPTIONS) +
                 len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS) +
                 len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS) +
                 len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
@@ -792,10 +704,9 @@ class SkipDetector:
             max_conversational_similarity = float(conversational_similarities.max())
             
             skip_categories = [
-                ('meta_instruction', self.SkipReason.SKIP_META_INSTRUCTION, self.META_INSTRUCTION_CATEGORY_DESCRIPTIONS),
+                ('instruction', self.SkipReason.SKIP_INSTRUCTION, self.INSTRUCTION_CATEGORY_DESCRIPTIONS),
                 ('translation', self.SkipReason.SKIP_TRANSLATION, self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS),
                 ('grammar', self.SkipReason.SKIP_GRAMMAR_PROOFREAD, self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS),
-                ('factual_query', self.SkipReason.SKIP_FACTUAL_QUERY, self.FACTUAL_QUERY_CATEGORY_DESCRIPTIONS),
                 ('technical', self.SkipReason.SKIP_TECHNICAL, self.TECHNICAL_CATEGORY_DESCRIPTIONS),
                 ('pure_math', self.SkipReason.SKIP_PURE_MATH, self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS),
             ]
