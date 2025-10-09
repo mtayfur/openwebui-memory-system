@@ -41,9 +41,9 @@ class Constants:
     LLM_CONSOLIDATION_TIMEOUT_SEC = 60.0  # Timeout for LLM consolidation operations
     
     # Cache System
-    MAX_CACHE_ENTRIES_PER_TYPE = 5000  # Maximum cache entries per cache type
-    MAX_CONCURRENT_USER_CACHES = 500  # Maximum concurrent user cache instances
-    CACHE_KEY_HASH_PREFIX_LENGTH = 16  # Hash prefix length for cache keys
+    MAX_CACHE_ENTRIES_PER_TYPE = 2500  # Maximum cache entries per cache type
+    MAX_CONCURRENT_USER_CACHES = 250  # Maximum concurrent user cache instances
+    CACHE_KEY_HASH_PREFIX_LENGTH = 10  # Hash prefix length for cache keys
     
     # Retrieval & Similarity
     SEMANTIC_RETRIEVAL_THRESHOLD = 0.5 # Semantic similarity threshold for retrieval
@@ -1170,6 +1170,7 @@ class Filter:
 
     def _normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
         """Normalize embedding vector."""
+        embedding = embedding.astype(np.float16)
         norm = np.linalg.norm(embedding)
         return embedding / norm if norm > 0 else embedding
 
