@@ -784,7 +784,7 @@ CANDIDATE MEMORIES:
 
         should_use_llm, decision_reason = self._should_use_llm_reranking(candidate_memories)
 
-        analysis_info = {"llm_decision": should_use_llm, "decision_reason": decision_reason, "candidate_count": len(candidate_memories)}
+        analysis_info = {"llm_decision": should_use_llm, "decision_reason": decision_reason, "candidate_count": len(candidate_memories)}        
 
         if should_use_llm:
             extended_count = int(self.memory_system.valves.max_memories_returned * Constants.EXTENDED_MAX_MEMORY_MULTIPLIER)
@@ -803,11 +803,12 @@ CANDIDATE MEMORIES:
         else:
             logger.info(f"Skipping LLM reranking: {decision_reason}")
             selected_memories = candidate_memories[:max_injection]
-
+        
         duration = time.time() - start_time
         duration_text = f" in {duration:.2f}s" if duration >= 0.01 else ""
-        await self.memory_system._emit_status(emitter, f"🎯 Memory Retrieval Complete{duration_text}", done=True)
-        logger.info(f"🎯 Memory Retrieval Complete{duration_text}")
+        retrieval_method = "LLM" if should_use_llm else "Semantic"
+        await self.memory_system._emit_status(emitter, f"🎯 {retrieval_method} Memory Retrieval Complete{duration_text}", done=True)
+        logger.info(f"🎯 {retrieval_method} Memory Retrieval Complete{duration_text}")
         return selected_memories, analysis_info
 
 
