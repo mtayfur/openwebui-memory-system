@@ -1096,7 +1096,7 @@ class Filter:
             self._skip_detector = _SHARED_MODEL_CACHE[model_key]["skip_detector"]
         else:
             logger.info(f"🤖 Loading embedding model: {model_key} (cache has {len(_SHARED_MODEL_CACHE)} models)")
-            self._model = SentenceTransformer(self.valves.embedding_model, device="cpu", trust_remote_code=True)
+            self._model = SentenceTransformer(self.valves.embedding_model, device="auto", trust_remote_code=True)
             self._skip_detector = SkipDetector(self._model)
             _SHARED_MODEL_CACHE[model_key] = {
                 "model": self._model,
