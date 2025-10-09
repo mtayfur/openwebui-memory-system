@@ -770,14 +770,10 @@ CANDIDATE MEMORIES:
 
             logger.info(f"🧠 LLM selected {len(selected_memories)} out of {len(candidate_memories)} candidates")
             
-            if not selected_memories:
-                await self.memory_system._emit_status(emitter, f"📭 No Relevant Memories After LLM Analysis", done=True)
-            
             return selected_memories
 
         except Exception as e:
             logger.warning(f"🤖 LLM reranking failed during memory relevance analysis: {str(e)}")            
-            await self.memory_system._emit_status(emitter, f"⚠️ LLM Analysis Failed, Using Similarity Ranking", done=True)
             return candidate_memories
 
     async def rerank_memories(
@@ -799,13 +795,18 @@ CANDIDATE MEMORIES:
             logger.info(f"Using LLM reranking: {decision_reason}")
 
             selected_memories = await self._llm_select_memories(user_message, llm_candidates, max_injection, emitter)
+            
+            if not selected_memories:
+                logger.info("📭 No relevant memories after LLM analysis")
+                await self.memory_system._emit_status(emitter, f"📭 No Relevant Memories After LLM Analysis", done=True)
+                return selected_memories, analysis_info
         else:
             logger.info(f"Skipping LLM reranking: {decision_reason}")
             selected_memories = candidate_memories[:max_injection]
 
         duration = time.time() - start_time
         duration_text = f" in {duration:.2f}s" if duration >= 0.01 else ""
-        await self.memory_system._emit_status(emitter, f"🎯 Memory Retrieval Complete{duration_text}", done=False)
+        await self.memory_system._emit_status(emitter, f"🎯 Memory Retrieval Complete{duration_text}", done=True)
         logger.info(f"🎯 Memory Retrieval Complete{duration_text}")
         return selected_memories, analysis_info
 
@@ -1036,10 +1037,10 @@ class LLMConsolidationService:
                 duration = time.time() - start_time
                 logger.info(f"💾 Memory Consolidation Complete In {duration:.2f}s")
                 
-                await self.memory_system._emit_status(emitter, f"💾 Memory Consolidation Complete in {duration:.2f}s", done=False)
-                
                 total_operations = created_count + updated_count + deleted_count
                 if total_operations > 0 or failed_count > 0:
+                    await self.memory_system._emit_status(emitter, f"💾 Memory Consolidation Complete in {duration:.2f}s", done=False)
+                    
                     operation_details = self.memory_system._build_operation_details(created_count, updated_count, deleted_count)
                     memory_word = "Memory" if total_operations == 1 else "Memories"
                     operations_summary = f"{', '.join(operation_details)} {memory_word}"
