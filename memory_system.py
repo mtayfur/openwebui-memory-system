@@ -21,8 +21,6 @@ from open_webui.models.users import Users
 from open_webui.routers.memories import Memories
 from fastapi import Request
 
-logging.getLogger("transformers").setLevel(logging.ERROR)
-
 logger = logging.getLogger("MemorySystem")
 
 _SHARED_SKIP_DETECTOR_CACHE = {}

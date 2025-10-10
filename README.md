@@ -35,7 +35,7 @@ All prompts and logic work language-agnostically. Stores memories in English but
 Tested with Gemini 2.5 Flash Lite, GPT-4o-mini, Qwen2.5-Instruct, and Mistral-Small. Should work with any model that supports structured outputs.
 
 **Embedding Model Support**  
-Supports any sentence-transformers model. The default `gte-multilingual-base` works well for diverse languages and is efficient enough for real-time use. Make sure to tweak thresholds if you switch to a different model.
+Uses OpenWebUI's configured embedding model (supports Ollama, OpenAI, Azure OpenAI, and local sentence-transformers). Configure embedding models through OpenWebUI's RAG settings. The memory system automatically uses whatever embedding backend you've configured in OpenWebUI.
 
 ## How It Works
 
@@ -55,7 +55,6 @@ Supports any sentence-transformers model. The default `gte-multilingual-base` wo
 
 Customize behavior through valves:
 - **model**: LLM for consolidation and reranking (default: `gemini-2.5-flash-lite`)
-- **embedding_model**: Sentence transformer (default: `gte-multilingual-base`)
 - **max_memories_returned**: Context injection limit (default: 10)
 - **semantic_retrieval_threshold**: Minimum similarity score (default: 0.5)
 - **enable_llm_reranking**: Toggle smart reranking (default: true)
@@ -65,7 +64,7 @@ Customize behavior through valves:
 
 - Batched embedding generation for efficiency
 - Normalized embeddings for faster similarity computation
-- Cached embeddings prevent redundant model calls
+- Cached embeddings prevent redundant API calls to OpenWebUI's embedding backend
 - LRU eviction keeps memory footprint bounded
 - Fast-path skip detection for instant filtering
 - Selective LLM usage based on candidate count
