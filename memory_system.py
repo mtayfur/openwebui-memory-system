@@ -730,11 +730,9 @@ CANDIDATE MEMORIES:
         try:
             response = await self.memory_system._query_llm(Prompts.MEMORY_RERANKING, user_prompt, response_model=Models.MemoryRerankingResponse)
 
-            selected_ids = response.ids
-
             selected_memories = []
             for memory in candidate_memories:
-                if memory["id"] in selected_ids and len(selected_memories) < max_count:
+                if memory["id"] in response.ids and len(selected_memories) < max_count:
                     selected_memories.append(memory)
 
             logger.info(f"🧠 LLM selected {len(selected_memories)} out of {len(candidate_memories)} candidates")
@@ -777,7 +775,6 @@ CANDIDATE MEMORIES:
         duration_text = f" in {duration:.2f}s" if duration >= 0.01 else ""
         retrieval_method = "LLM" if should_use_llm else "Semantic"
         await self.memory_system._emit_status(emitter, f"🎯 {retrieval_method} Memory Retrieval Complete{duration_text}", done=True)
-        logger.info(f"🎯 {retrieval_method} Memory Retrieval Complete{duration_text}")
         return selected_memories, analysis_info
 
 
