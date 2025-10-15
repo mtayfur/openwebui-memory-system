@@ -2,9 +2,17 @@
 
 A long-term memory system that learns from conversations and personalizes responses without requiring external APIs or tokens.
 
-## Important Notice
+## ⚠️ Important Notices
 
-**Privacy Consideration:** This system shares user messages and stored memories with your configured LLM for memory consolidation and retrieval operations. All data is processed through Open WebUI's built-in models using your existing configuration. No data is sent to external services beyond what your LLM provider configuration already allows.
+**🔒 Privacy & Data Sharing:**
+- User messages and stored memories are shared with your configured LLM for memory consolidation and retrieval
+- If using remote embedding models (like OpenAI text-embedding-3-small), memories will also be sent to those external providers
+- All data is processed through Open WebUI's built-in models using your existing configuration
+
+**💰 Cost & Model Requirements:**
+- The system uses complex prompts and sends relevant memories to the LLM, which increase token usage and costs
+- Requires public models configured in OpenWebUI - you can use any public model ID from your instance
+- **Recommended cost-effective models:** `gpt-5-nano`, `gemini-2.5-flash-lite`, `qwen3-instruct`, or your local LLMs
 
 ## Core Features
 
