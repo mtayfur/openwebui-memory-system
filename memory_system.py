@@ -44,13 +44,13 @@ class Constants:
     CACHE_KEY_HASH_PREFIX_LENGTH = 10  # Hash prefix length for cache keys
     
     # Retrieval & Similarity
-    SEMANTIC_RETRIEVAL_THRESHOLD = 0.5 # Semantic similarity threshold for retrieval
-    RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER = 0.9 # Multiplier for relaxed similarity threshold in secondary operations
-    EXTENDED_MAX_MEMORY_MULTIPLIER = 1.5 # Multiplier for expanding memory candidates in advanced operations
-    LLM_RERANKING_TRIGGER_MULTIPLIER = 0.5 # Multiplier for LLM reranking trigger threshold
+    SEMANTIC_RETRIEVAL_THRESHOLD = 0.25 # Semantic similarity threshold for retrieval
+    RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER = 0.8 # Multiplier for relaxed similarity threshold in secondary operations
+    EXTENDED_MAX_MEMORY_MULTIPLIER = 1.6 # Multiplier for expanding memory candidates in advanced operations
+    LLM_RERANKING_TRIGGER_MULTIPLIER = 0.8 # Multiplier for LLM reranking trigger threshold
     
     # Skip Detection
-    SKIP_CATEGORY_MARGIN = 0.1  # Margin above conversational similarity for skip category classification
+    SKIP_CATEGORY_MARGIN = 0.5  # Margin above conversational similarity for skip category classification
 
     # Safety & Operations
     MAX_DELETE_OPERATIONS_RATIO = 0.6  # Maximum delete operations ratio for safety
