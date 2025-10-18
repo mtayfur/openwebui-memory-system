@@ -22,7 +22,7 @@ from open_webui.models.users import Users
 from open_webui.routers.memories import Memories
 from fastapi import Request
 
-logger = logging.getLogger("MemorySystem")
+logger = logging.getLogger(__name__)
 
 _SHARED_SKIP_DETECTOR_CACHE = {}
 _SHARED_SKIP_DETECTOR_CACHE_LOCK = asyncio.Lock()
