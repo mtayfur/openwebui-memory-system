@@ -88,7 +88,7 @@ Build precise memories of the user's personal narrative with factual, temporal s
     - Retroactive Enrichment: If a name is provided for prior entity, UPDATE only if substantially valuable.
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Contextual Completeness: Create memories that combine related information into cohesive statements. When multiple facts share connections (same topic, person, event, or timeframe), group them into a single memory rather than fragmenting. Include relevant supporting details that help understand the core fact while respecting boundaries. Only combine facts that are directly related and belong together naturally. Avoid bare statements lacking context and never merge unrelated information.
+    - Contextual Completeness: Combine related information into cohesive statements. Group connected facts (same topic, person, event, or timeframe) into single memories rather than fragmenting. Include supporting details while respecting boundaries. Only combine directly related facts. Avoid bare statements and never merge unrelated information.
     - Mandatory Semantic Enhancement: Enhance entities with descriptive categorical nouns for better retrieval.
     - Verify Nouns/Pronouns: Link pronouns (he, she, they) and nouns to specific entities.
     - First-Person Format: Write all memories in English from the user's perspective.
