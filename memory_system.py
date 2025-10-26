@@ -73,7 +73,7 @@ class Prompts:
     MEMORY_CONSOLIDATION = f"""You are the Memory System Consolidator, a specialist in creating precise user memories.
 
 ## OBJECTIVE
-Build precise memories of the user's personal narrative with factual, temporal statements.
+Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
 
 ## AVAILABLE OPERATIONS
 - CREATE: For new, personal facts. Must be semantically and temporally enhanced.
@@ -83,6 +83,11 @@ Build precise memories of the user's personal narrative with factual, temporal s
 
 ## PROCESSING GUIDELINES
 - Personal Facts Only: Store only significant facts with lasting relevance to the user's life and identity. Exclude transient situations, questions, general knowledge, casual mentions, or momentary states.
+- **Filter for Intent:** You MUST SKIP if the user's primary intent is instructional, technical, or analytical, even if the message contains personal details. This includes requests to:
+    - Rewrite, revise, translate, or proofread a block of text (e.g., "revise this review for me").
+    - Answer a general knowledge, math, or technical question.
+    - Explain a concept, perform a calculation, or act as a persona.
+  **Only store facts when the user is *directly stating* them as part of a personal narrative, not when providing them as content for a task.**
 - Maintain Temporal Accuracy:
     - Capture Dates: Record temporal information when explicitly stated or clearly derivable. Convert relative references (last month, yesterday) to specific dates.
     - Preserve History: Transform superseded facts into past-tense statements with defined time boundaries.
@@ -93,14 +98,13 @@ Build precise memories of the user's personal narrative with factual, temporal s
     - Retroactive Enrichment: If a name is provided for prior entity, UPDATE only if substantially valuable.
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Contextual Completeness: Combine related information into cohesive statements. Group connected facts (same topic, person, event, or timeframe) into single memories rather than fragmenting. Include supporting details while respecting boundaries. Only combine directly related facts. Avoid bare statements and never merge unrelated information.
     - Mandatory Semantic Enhancement: Enhance entities with descriptive categorical nouns for better retrieval.
     - Verify Nouns/Pronouns: Link pronouns (he, she, they) and nouns to specific entities.
     - First-Person Format: Write all memories in English from the user's perspective.
 
 ## DECISION FRAMEWORK
-- Selectivity: Verify the user is stating a direct, personally significant fact with lasting importance. If not, SKIP. Never create duplicate memories. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE operations.
-- Strategy: Strongly prioritize enriching existing memories over creating new ones. Analyze the message holistically to identify naturally connected facts that should be captured together. When facts share connections (same person, event, situation, or causal relationship), combine them into a unified memory that preserves the complete picture. Each memory should be self-contained and meaningful.
+- Selectivity: Verify the user's *primary intent* is to state a direct, personally significant fact with lasting importance. If the intent is instructional, analytical, or a general question, SKIP. Never create duplicate memories. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE operations.
+- Strategy: Strongly prioritize enriching existing memories over creating new ones. Analyze the message holistically to identify naturally connected facts (same person, event, or timeframe) and combine them into a unified, cohesive memory rather than fragmenting them. Each memory must be self-contained and **never** merge unrelated information.
 - Execution: For new significant facts, use CREATE. For simple attribute changes, use UPDATE only if it meaningfully improves the memory. For significant changes, use UPDATE to make the old memory historical, then CREATE the new one. For contradictions, use DELETE.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
@@ -115,37 +119,37 @@ Explanation: Multiple facts about the same person (Sarah's active lifestyle, lov
 Message: "My daughter Emma just turned 12. We adopted a dog named Max for her 11th birthday. What should I give her for her 12th birthday?"
 Memories: [id:mem-002] My daughter Emma is 10 years old [noted at March 20 2024] [id:mem-101] I have a golden retriever [noted at September 20 2024]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-002", "content": "My daughter Emma turned 12 years old in September 2025"}}, {{"operation": "UPDATE", "id": "mem-101", "content": "I have a golden retriever named Max that was adopted in September 2024 as a birthday gift for my daughter Emma when she turned 11"}}]}}
-Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024) - all semantically connected to the same event and relationship.
+Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024). The instructional question ("What should I give her...?") is ignored as per the 'Filter for Intent' rule.
 
 ### Example 3
 Message: "Can you recommend some good tapas restaurants in Barcelona? I moved here from Madrid last month."
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved to Barcelona Spain in August 2025"}}]}}
-Explanation: Relocation is a significant life event with lasting impact. "Exploring the city" and "adjusting" are transient states and excluded.
+Explanation: Relocation is a significant life event. The request for recommendations is instructional and is ignored.
 
 ### Example 4
 Message: "My wife Sofia and I just got married in August. What are some good honeymoon destinations?"
 Memories: [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "CREATE", "id": "", "content": "I married Sofia in August 2025 and she is now my wife"}}]}}
-Explanation: Marriage is an enduring life event. Wife's name and marriage date are lasting facts combined naturally. "Planning honeymoon" is a transient activity and excluded.
+Explanation: Marriage is an enduring life event. The instructional question ("What are some good honeymoon destinations?") is ignored.
 
 ### Example 5
 Message: "¡Hola! Me mudé de Madrid a Barcelona el mes pasado y me casé con mi novia Sofía en agosto. ¿Me puedes recomendar un buen restaurante para celebrar?"
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025] [id:mem-006] I am dating Sofia [noted at February 10 2025] [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "UPDATE", "id": "mem-006", "content": "I moved to Barcelona Spain and married my girlfriend Sofia in August 2025, who is now my wife"}}]}}
-Explanation: The user's move and marriage are significant, related life events that occurred in the same month. They are consolidated into a single, cohesive memory that enriches the existing relationship context.
+Explanation: The user's move and marriage are significant, related life events. They are consolidated into a single memory. The request for a recommendation is ignored.
 
 ### Example 6
 Message: "I'm feeling stressed about work this week and looking for some relaxation tips. I have a big presentation coming up on Friday."
 Memories: []
 Return: {{"ops": []}}
-Explanation: Temporary stress, seeking tips, and upcoming presentation are all transient situations without lasting personal significance. Nothing to store.
+Explanation: Transient state (stress) and a request for information (relaxation tips). The primary intent is instructional/analytical, and the facts (presentation) are not significant, lasting personal narrative. Nothing to store.
 """
 
     MEMORY_RERANKING = f"""You are the Memory Relevance Analyzer.
 
 ## OBJECTIVE
-Select relevant memories to personalize the response, prioritizing direct connections and supporting context.
+Your goal is to analyze the user's message and select the most relevant memories to personalize the AI's response. Prioritize direct connections and supporting context.
 
 ## RELEVANCE CATEGORIES
 - Direct: Memories explicitly about the query topic, people, or domain.
@@ -154,9 +158,8 @@ Select relevant memories to personalize the response, prioritizing direct connec
 
 ## SELECTION FRAMEWORK
 - Prioritize Current Info: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
-- Hierarchy: Prioritize Direct → Contextual → Background.
+- Hierarchy: Prioritize topic matches first (Direct), then context that enhances the response (Contextual), and finally general background (Background).
 - Ordering: Order IDs by relevance, most relevant first.
-- Standard: Prioritize topic matches, then context that enhances the response.
 - Maximum Limit: Return up to {Constants.MAX_MEMORIES_PER_RETRIEVAL} memory IDs.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
@@ -185,7 +188,6 @@ Memories: [id:mem-026] I work as a senior software engineer at Tesla [noted at S
 Return: {{"ids": []}}
 Explanation: Query seeks general technical explanation without personal context. Job and family information don't affect how quantum computing concepts should be explained.
 """
-
 
 class Models:
     """Container for all Pydantic models used in the memory system."""
