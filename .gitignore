@@ -1,4 +1,4 @@
 __pycache__/
+.github/instructions/*
 .venv/
-**AGENTS.md
 tests/
