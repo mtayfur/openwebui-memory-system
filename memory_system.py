@@ -8,7 +8,6 @@ import hashlib
 import json
 import logging
 import statistics
-import statistics
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -29,7 +28,6 @@ from open_webui.routers.memories import Memories
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
 
 _SHARED_SKIP_DETECTOR_CACHE = {}
 _SHARED_SKIP_DETECTOR_CACHE_LOCK = asyncio.Lock()
@@ -47,8 +45,6 @@ class Constants:
     LLM_CONSOLIDATION_TIMEOUT_SEC = 60.0  # Timeout for LLM consolidation operations
 
     # Cache System
-    MAX_CACHE_ENTRIES_PER_TYPE = 500  # Maximum cache entries per cache type
-    MAX_CONCURRENT_USER_CACHES = 50  # Maximum concurrent user cache instances
     MAX_CACHE_ENTRIES_PER_TYPE = 500  # Maximum cache entries per cache type
     MAX_CONCURRENT_USER_CACHES = 50  # Maximum concurrent user cache instances
     CACHE_KEY_HASH_PREFIX_LENGTH = 10  # Hash prefix length for cache keys
@@ -107,7 +103,6 @@ Build precise memories of the user's personal narrative with factual, temporal s
     - Retroactive Enrichment: If a name is provided for prior entity, UPDATE only if substantially valuable.
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Contextual Completeness: Combine related information into cohesive statements. Group connected facts (same topic, person, event, or timeframe) into single memories rather than fragmenting. Include supporting details while respecting boundaries. Only combine directly related facts. Avoid bare statements and never merge unrelated information.
     - Contextual Completeness: Combine related information into cohesive statements. Group connected facts (same topic, person, event, or timeframe) into single memories rather than fragmenting. Include supporting details while respecting boundaries. Only combine directly related facts. Avoid bare statements and never merge unrelated information.
     - Mandatory Semantic Enhancement: Enhance entities with descriptive categorical nouns for better retrieval.
     - Verify Nouns/Pronouns: Link pronouns (he, she, they) and nouns to specific entities.
@@ -495,8 +490,6 @@ class SkipDetector:
         try:
             technical_embeddings = self.embedding_function(
                 self.TECHNICAL_CATEGORY_DESCRIPTIONS
-            technical_embeddings = self.embedding_function(
-                self.TECHNICAL_CATEGORY_DESCRIPTIONS
             )
 
             instruction_embeddings = self.embedding_function(
@@ -869,7 +862,6 @@ CANDIDATE MEMORIES:
 
             selected_memories = []
             for memory in candidate_memories:
-                if memory["id"] in response.ids and len(selected_memories) < max_count:
                 if memory["id"] in response.ids and len(selected_memories) < max_count:
                     selected_memories.append(memory)
 
@@ -1260,7 +1252,6 @@ class LLMConsolidationService:
             )
             logger.info(f"🔄 Memory Operations: {', '.join(operation_details)}")
             await self.memory_system._refresh_user_cache(user_id)
-            await self.memory_system._refresh_user_cache(user_id)
 
         return created_count, updated_count, deleted_count, failed_count
 
@@ -1386,8 +1377,6 @@ class Filter:
         self._background_tasks: set = set()
         self._shutdown_event = asyncio.Event()
 
-        self._embedding_function = None
-        self._skip_detector = None
         self._embedding_function = None
         self._skip_detector = None
 
@@ -1519,10 +1508,6 @@ class Filter:
         self, embedding: Union[List[float], np.ndarray]
     ) -> np.ndarray:
         """Normalize embedding vector."""
-        if isinstance(embedding, list):
-            embedding = np.array(embedding, dtype=np.float16)
-        else:
-            embedding = embedding.astype(np.float16)
         if isinstance(embedding, list):
             embedding = np.array(embedding, dtype=np.float16)
         else:
@@ -1688,7 +1673,6 @@ class Filter:
 
         top_score = max(scores)
         lowest_score = min(scores)
-        median_score = statistics.median(scores)
         median_score = statistics.median(scores)
 
         context_label = (
@@ -2097,8 +2081,6 @@ class Filter:
 
     async def _refresh_user_cache(self, user_id: str) -> None:
         """Refresh user cache - clear stale caches and update with fresh embeddings."""
-    async def _refresh_user_cache(self, user_id: str) -> None:
-        """Refresh user cache - clear stale caches and update with fresh embeddings."""
         start_time = time.time()
         try:
             retrieval_cleared = await self._cache_manager.clear_user_cache(
@@ -2157,8 +2139,6 @@ class Filter:
             if operation.operation == Models.MemoryOperationType.CREATE:
                 content_stripped = operation.content.strip()
                 if not content_stripped:
-                content_stripped = operation.content.strip()
-                if not content_stripped:
                     logger.warning(f"⚠️ Skipping CREATE operation: empty content")
                     return Models.OperationResult.SKIPPED_EMPTY_CONTENT.value
 
@@ -2171,8 +2151,6 @@ class Filter:
                 return Models.MemoryOperationType.CREATE.value
 
             elif operation.operation == Models.MemoryOperationType.UPDATE:
-                id_stripped = operation.id.strip()
-                if not id_stripped:
                 id_stripped = operation.id.strip()
                 if not id_stripped:
                     logger.warning(f"⚠️ Skipping UPDATE operation: empty ID")
@@ -2197,8 +2175,6 @@ class Filter:
                 return Models.MemoryOperationType.UPDATE.value
 
             elif operation.operation == Models.MemoryOperationType.DELETE:
-                id_stripped = operation.id.strip()
-                if not id_stripped:
                 id_stripped = operation.id.strip()
                 if not id_stripped:
                     logger.warning(f"⚠️ Skipping DELETE operation: empty ID")
