@@ -55,6 +55,7 @@ class Constants:
 
     # Skip Detection
     SKIP_CATEGORY_MARGIN = 0.20  # Margin above personal similarity for skip category classification
+    DEDUPLICATION_SIMILARITY_THRESHOLD = 0.90  # Similarity threshold for deduplication checks
 
     # Safety & Operations
     MAX_DELETE_OPERATIONS_RATIO = 0.6  # Maximum delete operations ratio for safety
