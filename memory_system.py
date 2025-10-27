@@ -63,9 +63,6 @@ class Constants:
     # Content Display
     CONTENT_PREVIEW_LENGTH = 80  # Maximum length for content preview display
 
-    # Default Models
-    DEFAULT_LLM_MODEL = "google/gemini-2.5-flash-lite"
-
 
 class Prompts:
     """Container for all LLM prompts used in the memory system."""
@@ -1193,17 +1190,9 @@ class Filter:
     class Valves(BaseModel):
         """Configuration valves for the Memory System."""
 
-        model: str = Field(
-            default=Constants.DEFAULT_LLM_MODEL,
-            description="Model name for LLM operations",
-        )
-        use_custom_model_for_memory: bool = Field(
-            default=False,
-            description="Use a custom model for memory operations instead of the current chat model",
-        )
-        custom_memory_model: str = Field(
-            default=Constants.DEFAULT_LLM_MODEL,
-            description="Custom model to use for memory operations when enabled",
+        memory_model: Optional[str] = Field(
+            default=None,
+            description="Custom model to use for memory operations. If Default, uses the current chat model",
         )
         max_memories_returned: int = Field(
             default=Constants.MAX_MEMORIES_PER_RETRIEVAL,
@@ -1324,9 +1313,6 @@ class Filter:
 
     def _validate_system_configuration(self) -> None:
         """Validate configuration and fail if invalid."""
-        if not self.valves.model or not self.valves.model.strip():
-            raise ValueError("🤖 Model not specified")
-
         if self.valves.max_memories_returned <= 0:
             raise ValueError(f"📊 Invalid max memories returned: {self.valves.max_memories_returned}")
 
@@ -1723,24 +1709,14 @@ class Filter:
         body: Dict[str, Any],
         __event_emitter__: Optional[Callable] = None,
         __user__: Optional[Dict[str, Any]] = None,
-        __model__: Optional[str] = None,
         __request__: Optional[Request] = None,
-        **kwargs,
     ) -> Dict[str, Any]:
         """Simplified inlet processing for memory retrieval and injection."""
 
-        model_to_use = body.get("model") if isinstance(body, dict) else None
-        if not model_to_use:
-            model_to_use = __model__ or getattr(__request__.state, "model", None)
-        if not model_to_use:
-            model_to_use = Constants.DEFAULT_LLM_MODEL
-            logger.warning(f"⚠️ No model found, use default model : {model_to_use}")
+        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
 
-        if self.valves.use_custom_model_for_memory and self.valves.custom_memory_model:
-            model_to_use = self.valves.custom_memory_model
+        if self.valves.memory_model:
             logger.info(f"🧠 Using the custom model for memory : {model_to_use}")
-
-        self.valves.model = model_to_use
 
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 
@@ -1787,24 +1763,14 @@ class Filter:
         body: dict,
         __event_emitter__: Optional[Callable] = None,
         __user__: Optional[dict] = None,
-        __model__: Optional[str] = None,
         __request__: Optional[Request] = None,
-        **kwargs,
     ) -> dict:
         """Simplified outlet processing for background memory consolidation."""
 
-        model_to_use = body.get("model") if isinstance(body, dict) else None
-        if not model_to_use:
-            model_to_use = __model__ or getattr(__request__.state, "model", None)
-        if not model_to_use:
-            model_to_use = Constants.DEFAULT_LLM_MODEL
-            logger.warning(f"⚠️ No model found, use default model : {model_to_use}")
+        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
 
-        if self.valves.use_custom_model_for_memory and self.valves.custom_memory_model:
-            model_to_use = self.valves.custom_memory_model
+        if self.valves.memory_model:
             logger.info(f"🧠 Using the custom model for memory : {model_to_use}")
-
-        self.valves.model = model_to_use
 
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 
@@ -1969,7 +1935,7 @@ class Filter:
         if not hasattr(self, "__request__") or not hasattr(self, "__user__"):
             raise RuntimeError("🔧 Pipeline interface not properly initialized. __request__ and __user__ required.")
 
-        model_to_use = self.valves.model if self.valves.model else self.__model__
+        model_to_use = self.__model__
         if not model_to_use:
             raise ValueError("🤖 No model specified for LLM operations")
 
