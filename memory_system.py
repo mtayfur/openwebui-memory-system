@@ -187,6 +187,7 @@ Return: {{"ids": []}}
 Explanation: Query seeks general technical explanation without personal context. Job and family information don't affect how quantum computing concepts should be explained.
 """
 
+
 class Models:
     """Container for all Pydantic models used in the memory system."""
 
@@ -438,37 +439,16 @@ class SkipDetector:
     def _initialize_reference_embeddings(self) -> None:
         """Compute and cache embeddings for category descriptions."""
         try:
-            technical_embeddings = self.embedding_function(self.TECHNICAL_CATEGORY_DESCRIPTIONS)
-
-            instruction_embeddings = self.embedding_function(self.INSTRUCTION_CATEGORY_DESCRIPTIONS)
-
-            pure_math_embeddings = self.embedding_function(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS)
-
-            translation_embeddings = self.embedding_function(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS)
-
-            grammar_embeddings = self.embedding_function(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
-
-            conversational_embeddings = self.embedding_function(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)
+            non_personal_embeddings = self.embedding_function(self.NON_PERSONAL_CATEGORY_DESCRIPTIONS)
+            personal_embeddings = self.embedding_function(self.PERSONAL_CATEGORY_DESCRIPTIONS)
 
             self._reference_embeddings = {
-                "technical": np.array(technical_embeddings),
-                "instruction": np.array(instruction_embeddings),
-                "pure_math": np.array(pure_math_embeddings),
-                "translation": np.array(translation_embeddings),
-                "grammar": np.array(grammar_embeddings),
-                "conversational": np.array(conversational_embeddings),
+                "non_personal": np.array(non_personal_embeddings),
+                "personal": np.array(personal_embeddings),
             }
 
-            total_skip_categories = (
-                len(self.TECHNICAL_CATEGORY_DESCRIPTIONS)
-                + len(self.INSTRUCTION_CATEGORY_DESCRIPTIONS)
-                + len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS)
-                + len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS)
-                + len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
-            )
-
             logger.info(
-                f"SkipDetector initialized with {total_skip_categories} skip categories and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} personal categories"
+                f"SkipDetector initialized with {len(self.NON_PERSONAL_CATEGORY_DESCRIPTIONS)} non-personal categories and {len(self.PERSONAL_CATEGORY_DESCRIPTIONS)} personal categories"
             )
         except Exception as e:
             logger.error(f"Failed to initialize SkipDetector reference embeddings: {e}")
@@ -490,20 +470,20 @@ class SkipDetector:
         # Pattern 1: Multiple URLs (5+ full URLs indicates link lists or technical references)
         url_pattern_count = message.count("http://") + message.count("https://")
         if url_pattern_count >= 5:
-            return self.SkipReason.SKIP_TECHNICAL.value
+            return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 2: Long unbroken alphanumeric strings (tokens, hashes, base64)
         words = message.split()
         for word in words:
             cleaned = word.strip('.,;:!?()[]{}"\'"')
             if len(cleaned) > 80 and cleaned.replace("-", "").replace("_", "").isalnum():
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
         separator_patterns = ["---", "===", "___", "***"]
         for pattern in separator_patterns:
             if message.count(pattern) >= 2:
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 4: Command-line patterns with context-aware detection
         lines_stripped = [line.strip() for line in message.split("\n") if line.strip()]
@@ -528,9 +508,9 @@ class SkipDetector:
                     pass
 
             if actual_command_lines >= 1 and any(c in message for c in ["http://", "https://", " | "]):
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
             if actual_command_lines >= 3:
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 5: High path/URL density (dots and slashes suggesting file paths or URLs)
         if msg_len > 30:
@@ -538,16 +518,16 @@ class SkipDetector:
             dot_count = message.count(".")
             path_chars = slash_count + dot_count
             if path_chars > 10 and (path_chars / msg_len) > 0.15:
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 6: Markup character density (structured data)
         markup_chars = sum(message.count(c) for c in "{}[]<>")
         if markup_chars >= 6:
             if markup_chars / msg_len > 0.10:
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
             curly_count = message.count("{") + message.count("}")
             if curly_count >= 10:
-                return self.SkipReason.SKIP_TECHNICAL.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 7: Structured nested content with colons (key: value patterns)
         line_count = message.count("\n")
@@ -559,7 +539,7 @@ class SkipDetector:
                 indented_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
                 if colon_lines / len(non_empty_lines) > 0.4 and indented_lines / len(non_empty_lines) > 0.5:
-                    return self.SkipReason.SKIP_TECHNICAL.value
+                    return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
         if line_count > 15:
@@ -583,7 +563,7 @@ class SkipDetector:
                         "def",
                     ]
                     if any(keyword in message.lower() for keyword in technical_keywords):
-                        return self.SkipReason.SKIP_TECHNICAL.value
+                        return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
         if line_count >= 3:
@@ -605,7 +585,7 @@ class SkipDetector:
                         "private ",
                     ]
                     if any(indicator in message.lower() for indicator in code_indicators):
-                        return self.SkipReason.SKIP_TECHNICAL.value
+                        return self.SkipReason.SKIP_NON_PERSONAL.value
 
         # Pattern 10: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
@@ -614,7 +594,7 @@ class SkipDetector:
             if special_ratio > 0.35:
                 alphanumeric = sum(1 for c in message if c.isalnum())
                 if alphanumeric / msg_len < 0.50:
-                    return self.SkipReason.SKIP_TECHNICAL.value
+                    return self.SkipReason.SKIP_NON_PERSONAL.value
 
         return None
 
@@ -642,53 +622,19 @@ class SkipDetector:
         try:
             message_embedding = np.array(self.embedding_function([message.strip()])[0])
 
-            conversational_similarities = np.dot(message_embedding, self._reference_embeddings["conversational"].T)
-            max_conversational_similarity = float(conversational_similarities.max())
+            personal_similarities = np.dot(message_embedding, self._reference_embeddings["personal"].T)
+            max_personal_similarity = float(personal_similarities.max())
 
-            skip_categories = [
-                (
-                    "instruction",
-                    self.SkipReason.SKIP_INSTRUCTION,
-                    self.INSTRUCTION_CATEGORY_DESCRIPTIONS,
-                ),
-                (
-                    "translation",
-                    self.SkipReason.SKIP_TRANSLATION,
-                    self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS,
-                ),
-                (
-                    "grammar",
-                    self.SkipReason.SKIP_GRAMMAR_PROOFREAD,
-                    self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS,
-                ),
-                (
-                    "technical",
-                    self.SkipReason.SKIP_TECHNICAL,
-                    self.TECHNICAL_CATEGORY_DESCRIPTIONS,
-                ),
-                (
-                    "pure_math",
-                    self.SkipReason.SKIP_PURE_MATH,
-                    self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS,
-                ),
-            ]
+            non_personal_similarities = np.dot(message_embedding, self._reference_embeddings["non_personal"].T)
+            max_non_personal_similarity = float(non_personal_similarities.max())
 
-            qualifying_categories = []
-            margin_threshold = max_conversational_similarity + Constants.SKIP_CATEGORY_MARGIN
-
-            for cat_key, skip_reason, descriptions in skip_categories:
-                similarities = np.dot(message_embedding, self._reference_embeddings[cat_key].T)
-                max_similarity = float(similarities.max())
-
-                if max_similarity > margin_threshold:
-                    qualifying_categories.append((max_similarity, cat_key, skip_reason))
-
-            if qualifying_categories:
-                highest_similarity, highest_cat_key, highest_skip_reason = max(qualifying_categories, key=lambda x: x[0])
+            if (max_non_personal_similarity - max_personal_similarity) > Constants.SKIP_CATEGORY_MARGIN:
                 logger.info(
-                    f"🚫 Skipping message: {highest_skip_reason.value} (sim {highest_similarity:.3f} > conv {max_conversational_similarity:.3f} + {Constants.SKIP_CATEGORY_MARGIN:.3f})"
+                    f"🚫 Skipping message: non-personal content detected "
+                    f"(non-personal sim {max_non_personal_similarity:.3f} > "
+                    f"personal sim {max_personal_similarity:.3f} + {Constants.SKIP_CATEGORY_MARGIN:.3f})"
                 )
-                return highest_skip_reason.value
+                return self.SkipReason.SKIP_NON_PERSONAL.value
 
             return None
 
@@ -1258,6 +1204,8 @@ class Filter:
             if self._embedding_function is None and hasattr(__request__.app.state, "EMBEDDING_FUNCTION"):
                 self._embedding_function = __request__.app.state.EMBEDDING_FUNCTION
                 logger.info(f"✅ Using OpenWebUI's embedding function")
+
+                self._detect_embedding_dimension()
 
                 if self._skip_detector is None:
                     global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
