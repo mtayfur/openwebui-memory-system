@@ -62,7 +62,7 @@ class Constants:
     MIN_OPS_FOR_DELETE_RATIO_CHECK = 6  # Minimum operations to apply ratio check
 
     # Content Display
-    CONTENT_PREVIEW_LENGTH = 80  # Maximum length for content preview display
+    CONTENT_PREVIEW_LENGTH = 100  # Maximum length for content preview display
 
 
 class Prompts:
