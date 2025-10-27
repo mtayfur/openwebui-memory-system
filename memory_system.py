@@ -463,27 +463,27 @@ class SkipDetector:
             return SkipDetector.SkipReason.SKIP_SIZE.value
         return None
 
-    def _fast_path_skip_detection(self, message: str) -> Optional[str]:
+    def _fast_path_skip_detection(self, message: str) -> Optional[bool]:
         """Language-agnostic structural pattern detection with high confidence and low false positive rate."""
         msg_len = len(message)
 
         # Pattern 1: Multiple URLs (5+ full URLs indicates link lists or technical references)
         url_pattern_count = message.count("http://") + message.count("https://")
         if url_pattern_count >= 5:
-            return self.SkipReason.SKIP_NON_PERSONAL.value
+            return True
 
         # Pattern 2: Long unbroken alphanumeric strings (tokens, hashes, base64)
         words = message.split()
         for word in words:
             cleaned = word.strip('.,;:!?()[]{}"\'"')
             if len(cleaned) > 80 and cleaned.replace("-", "").replace("_", "").isalnum():
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
 
         # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
         separator_patterns = ["---", "===", "___", "***"]
         for pattern in separator_patterns:
             if message.count(pattern) >= 2:
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
 
         # Pattern 4: Command-line patterns with context-aware detection
         lines_stripped = [line.strip() for line in message.split("\n") if line.strip()]
@@ -508,9 +508,9 @@ class SkipDetector:
                     pass
 
             if actual_command_lines >= 1 and any(c in message for c in ["http://", "https://", " | "]):
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
             if actual_command_lines >= 3:
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
 
         # Pattern 5: High path/URL density (dots and slashes suggesting file paths or URLs)
         if msg_len > 30:
@@ -518,16 +518,16 @@ class SkipDetector:
             dot_count = message.count(".")
             path_chars = slash_count + dot_count
             if path_chars > 10 and (path_chars / msg_len) > 0.15:
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
 
         # Pattern 6: Markup character density (structured data)
         markup_chars = sum(message.count(c) for c in "{}[]<>")
         if markup_chars >= 6:
             if markup_chars / msg_len > 0.10:
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
             curly_count = message.count("{") + message.count("}")
             if curly_count >= 10:
-                return self.SkipReason.SKIP_NON_PERSONAL.value
+                return True
 
         # Pattern 7: Structured nested content with colons (key: value patterns)
         line_count = message.count("\n")
@@ -539,7 +539,7 @@ class SkipDetector:
                 indented_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
                 if colon_lines / len(non_empty_lines) > 0.4 and indented_lines / len(non_empty_lines) > 0.5:
-                    return self.SkipReason.SKIP_NON_PERSONAL.value
+                    return True
 
         # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
         if line_count > 15:
@@ -550,7 +550,7 @@ class SkipDetector:
                 structured_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
                 if markup_in_lines / len(non_empty_lines) > 0.3:
-                    return self.SkipReason.SKIP_NON_PERSONAL.value
+                    return True
                 elif structured_lines / len(non_empty_lines) > 0.6:
                     technical_keywords = [
                         "function",
@@ -563,7 +563,7 @@ class SkipDetector:
                         "def",
                     ]
                     if any(keyword in message.lower() for keyword in technical_keywords):
-                        return self.SkipReason.SKIP_NON_PERSONAL.value
+                        return True
 
         # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
         if line_count >= 3:
@@ -585,7 +585,7 @@ class SkipDetector:
                         "private ",
                     ]
                     if any(indicator in message.lower() for indicator in code_indicators):
-                        return self.SkipReason.SKIP_NON_PERSONAL.value
+                        return True
 
         # Pattern 10: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
@@ -594,7 +594,7 @@ class SkipDetector:
             if special_ratio > 0.35:
                 alphanumeric = sum(1 for c in message if c.isalnum())
                 if alphanumeric / msg_len < 0.50:
-                    return self.SkipReason.SKIP_NON_PERSONAL.value
+                    return True
 
         return None
 
@@ -612,8 +612,8 @@ class SkipDetector:
 
         fast_skip = self._fast_path_skip_detection(message)
         if fast_skip:
-            logger.info(f"Fast-path skip: {fast_skip}")
-            return fast_skip
+            logger.info(f"Fast-path skip: {self.SkipReason.SKIP_NON_PERSONAL.value}")
+            return self.SkipReason.SKIP_NON_PERSONAL.value
 
         if self._reference_embeddings is None:
             logger.warning("SkipDetector reference embeddings not initialized, allowing message through")
