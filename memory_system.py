@@ -1,6 +1,9 @@
 """
 title: Memory System
+description: A semantic memory management system for Open WebUI that consolidates, deduplicates, and retrieves personalized user memories using LLM operations.
 version: 1.0.0
+authors: https://github.com/mtayfur
+license: Apache-2.0
 """
 
 import asyncio
@@ -25,7 +28,9 @@ from pydantic import (
 from open_webui.utils.chat import generate_chat_completion
 from open_webui.models.users import Users
 from open_webui.routers.memories import Memories
-from fastapi import Request
+from open_webui.utils.chat import generate_chat_completion
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +38,10 @@ _SHARED_SKIP_DETECTOR_CACHE = {}
 _SHARED_SKIP_DETECTOR_CACHE_LOCK = asyncio.Lock()
 
 
+
 class Constants:
     """Centralized configuration constants for the memory system."""
+
 
     # Core System Limits
     MAX_MEMORY_CONTENT_CHARS = 500  # Character limit for LLM prompt memory content
@@ -44,10 +51,12 @@ class Constants:
     DATABASE_OPERATION_TIMEOUT_SEC = 10  # Timeout for DB operations like user lookup
     LLM_CONSOLIDATION_TIMEOUT_SEC = 60.0  # Timeout for LLM consolidation operations
 
+
     # Cache System
     MAX_CACHE_ENTRIES_PER_TYPE = 500  # Maximum cache entries per cache type
     MAX_CONCURRENT_USER_CACHES = 50  # Maximum concurrent user cache instances
     CACHE_KEY_HASH_PREFIX_LENGTH = 10  # Hash prefix length for cache keys
+
 
     # Retrieval & Similarity
     SEMANTIC_RETRIEVAL_THRESHOLD = 0.25  # Semantic similarity threshold for retrieval
@@ -70,11 +79,15 @@ class Constants:
     MAX_DELETE_OPERATIONS_RATIO = 0.6  # Maximum delete operations ratio for safety
     MIN_OPS_FOR_DELETE_RATIO_CHECK = 6  # Minimum operations to apply ratio check
 
+
     # Content Display
+    CONTENT_PREVIEW_LENGTH = 80  # Maximum length for content preview display
+
     CONTENT_PREVIEW_LENGTH = 80  # Maximum length for content preview display
 
     # Default Models
     DEFAULT_LLM_MODEL = "google/gemini-2.5-flash-lite"
+
 
 
 class Prompts:
@@ -83,7 +96,7 @@ class Prompts:
     MEMORY_CONSOLIDATION = f"""You are the Memory System Consolidator, a specialist in creating precise user memories.
 
 ## OBJECTIVE
-Build precise memories of the user's personal narrative with factual, temporal statements.
+Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
 
 ## AVAILABLE OPERATIONS
 - CREATE: For new, personal facts. Must be semantically and temporally enhanced.
@@ -93,6 +106,11 @@ Build precise memories of the user's personal narrative with factual, temporal s
 
 ## PROCESSING GUIDELINES
 - Personal Facts Only: Store only significant facts with lasting relevance to the user's life and identity. Exclude transient situations, questions, general knowledge, casual mentions, or momentary states.
+- **Filter for Intent:** You MUST SKIP if the user's primary intent is instructional, technical, or analytical, even if the message contains personal details. This includes requests to:
+    - Rewrite, revise, translate, or proofread a block of text (e.g., "revise this review for me").
+    - Answer a general knowledge, math, or technical question.
+    - Explain a concept, perform a calculation, or act as a persona.
+  **Only store facts when the user is *directly stating* them as part of a personal narrative, not when providing them as content for a task.**
 - Maintain Temporal Accuracy:
     - Capture Dates: Record temporal information when explicitly stated or clearly derivable. Convert relative references (last month, yesterday) to specific dates.
     - Preserve History: Transform superseded facts into past-tense statements with defined time boundaries.
@@ -103,14 +121,13 @@ Build precise memories of the user's personal narrative with factual, temporal s
     - Retroactive Enrichment: If a name is provided for prior entity, UPDATE only if substantially valuable.
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Contextual Completeness: Combine related information into cohesive statements. Group connected facts (same topic, person, event, or timeframe) into single memories rather than fragmenting. Include supporting details while respecting boundaries. Only combine directly related facts. Avoid bare statements and never merge unrelated information.
     - Mandatory Semantic Enhancement: Enhance entities with descriptive categorical nouns for better retrieval.
     - Verify Nouns/Pronouns: Link pronouns (he, she, they) and nouns to specific entities.
     - First-Person Format: Write all memories in English from the user's perspective.
 
 ## DECISION FRAMEWORK
-- Selectivity: Verify the user is stating a direct, personally significant fact with lasting importance. If not, SKIP. Never create duplicate memories. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE operations.
-- Strategy: Strongly prioritize enriching existing memories over creating new ones. Analyze the message holistically to identify naturally connected facts that should be captured together. When facts share connections (same person, event, situation, or causal relationship), combine them into a unified memory that preserves the complete picture. Each memory should be self-contained and meaningful.
+- Selectivity: Verify the user's *primary intent* is to state a direct, personally significant fact with lasting importance. If the intent is instructional, analytical, or a general question, SKIP. Never create duplicate memories. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE operations.
+- Strategy: Strongly prioritize enriching existing memories over creating new ones. Analyze the message holistically to identify naturally connected facts (same person, event, or timeframe) and combine them into a unified, cohesive memory rather than fragmenting them. Each memory must be self-contained and **never** merge unrelated information.
 - Execution: For new significant facts, use CREATE. For simple attribute changes, use UPDATE only if it meaningfully improves the memory. For significant changes, use UPDATE to make the old memory historical, then CREATE the new one. For contradictions, use DELETE.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
@@ -125,37 +142,37 @@ Explanation: Multiple facts about the same person (Sarah's active lifestyle, lov
 Message: "My daughter Emma just turned 12. We adopted a dog named Max for her 11th birthday. What should I give her for her 12th birthday?"
 Memories: [id:mem-002] My daughter Emma is 10 years old [noted at March 20 2024] [id:mem-101] I have a golden retriever [noted at September 20 2024]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-002", "content": "My daughter Emma turned 12 years old in September 2025"}}, {{"operation": "UPDATE", "id": "mem-101", "content": "I have a golden retriever named Max that was adopted in September 2024 as a birthday gift for my daughter Emma when she turned 11"}}]}}
-Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024) - all semantically connected to the same event and relationship.
+Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024). The instructional question ("What should I give her...?") is ignored as per the 'Filter for Intent' rule.
 
 ### Example 3
 Message: "Can you recommend some good tapas restaurants in Barcelona? I moved here from Madrid last month."
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved to Barcelona Spain in August 2025"}}]}}
-Explanation: Relocation is a significant life event with lasting impact. "Exploring the city" and "adjusting" are transient states and excluded.
+Explanation: Relocation is a significant life event. The request for recommendations is instructional and is ignored.
 
 ### Example 4
 Message: "My wife Sofia and I just got married in August. What are some good honeymoon destinations?"
 Memories: [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "CREATE", "id": "", "content": "I married Sofia in August 2025 and she is now my wife"}}]}}
-Explanation: Marriage is an enduring life event. Wife's name and marriage date are lasting facts combined naturally. "Planning honeymoon" is a transient activity and excluded.
+Explanation: Marriage is an enduring life event. The instructional question ("What are some good honeymoon destinations?") is ignored.
 
 ### Example 5
 Message: "¡Hola! Me mudé de Madrid a Barcelona el mes pasado y me casé con mi novia Sofía en agosto. ¿Me puedes recomendar un buen restaurante para celebrar?"
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025] [id:mem-006] I am dating Sofia [noted at February 10 2025] [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "UPDATE", "id": "mem-006", "content": "I moved to Barcelona Spain and married my girlfriend Sofia in August 2025, who is now my wife"}}]}}
-Explanation: The user's move and marriage are significant, related life events that occurred in the same month. They are consolidated into a single, cohesive memory that enriches the existing relationship context.
+Explanation: The user's move and marriage are significant, related life events. They are consolidated into a single memory. The request for a recommendation is ignored.
 
 ### Example 6
 Message: "I'm feeling stressed about work this week and looking for some relaxation tips. I have a big presentation coming up on Friday."
 Memories: []
 Return: {{"ops": []}}
-Explanation: Temporary stress, seeking tips, and upcoming presentation are all transient situations without lasting personal significance. Nothing to store.
+Explanation: Transient state (stress) and a request for information (relaxation tips). The primary intent is instructional/analytical, and the facts (presentation) are not significant, lasting personal narrative. Nothing to store.
 """
 
     MEMORY_RERANKING = f"""You are the Memory Relevance Analyzer.
 
 ## OBJECTIVE
-Select relevant memories to personalize the response, prioritizing direct connections and supporting context.
+Your goal is to analyze the user's message and select the most relevant memories to personalize the AI's response. Prioritize direct connections and supporting context.
 
 ## RELEVANCE CATEGORIES
 - Direct: Memories explicitly about the query topic, people, or domain.
@@ -164,9 +181,8 @@ Select relevant memories to personalize the response, prioritizing direct connec
 
 ## SELECTION FRAMEWORK
 - Prioritize Current Info: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
-- Hierarchy: Prioritize Direct → Contextual → Background.
+- Hierarchy: Prioritize topic matches first (Direct), then context that enhances the response (Contextual), and finally general background (Background).
 - Ordering: Order IDs by relevance, most relevant first.
-- Standard: Prioritize topic matches, then context that enhances the response.
 - Maximum Limit: Return up to {Constants.MAX_MEMORIES_PER_RETRIEVAL} memory IDs.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
@@ -352,9 +368,9 @@ class UnifiedCacheManager:
 
 
 class SkipDetector:
-    """Semantic-based content classifier using zero-shot classification with category descriptions."""
+    """Binary content classifier: personal vs non-personal using semantic analysis."""
 
-    TECHNICAL_CATEGORY_DESCRIPTIONS = [
+    NON_PERSONAL_CATEGORY_DESCRIPTIONS = [
         "programming language syntax, data types like string or integer, algorithm logic, function, method, programming class, object-oriented paradigm, variable scope, control flow, import, module, package, library, framework, recursion, iteration",
         "software design patterns, creational: singleton, factory, builder; structural: adapter, decorator, facade, proxy; behavioral: observer, strategy, command, mediator, chain of responsibility; abstract interface, polymorphism, composition",
         "error handling, exception, stack trace, TypeError, NullPointerException, IndexError, segmentation fault, core dump, stack overflow, runtime vs compile-time error, assertion failed, syntax error, null pointer dereference, memory leak, bug",
@@ -375,9 +391,6 @@ class SkipDetector:
         "regex pattern, regular expression matching, groups, capturing, backslash escapes, metacharacters, wildcards, quantifiers, character classes, lookaheads, lookbehinds, alternation, anchors, word boundary, multiline flag, global search",
         "software testing, unit test, assertion, mock, stub, fixture, test suite, test case, verification, automated QA, validation framework, JUnit, pytest, Jest. Integration, end-to-end (E2E), functional, regression, acceptance testing",
         "cloud computing platforms, infrastructure as a service (IaaS), PaaS, AWS, Azure, GCP, compute instance, region, availability zone, elasticity, distributed system, virtual machine, container, serverless, Lambda, edge computing, CDN",
-    ]
-
-    INSTRUCTION_CATEGORY_DESCRIPTIONS = [
         "format the output as structured data. Return the answer as JSON with specific keys and values, or as YAML. Organize information into a CSV file or a database-style table with columns and rows. Present as a list of objects or an array.",
         "style the text presentation. Use markdown formatting like bullet points, a numbered list, or a task list. Organize content into a grid or tabular layout with proper alignment. Create a hierarchical structure with nested elements for clarity.",
         "adjust the response length. Make the answer shorter, more concise, brief, or condensed. Summarize the key points. Trim down the text to reduce the overall word count or meet a specific character limit. Be less verbose and more direct.",
@@ -388,9 +401,6 @@ class SkipDetector:
         "continue the generated response. Keep going with the explanation or list. Provide more information and finish your thought. Complete the rest of the content or story. Proceed with the next steps. Do not stop until you have concluded.",
         "act as a specific persona or role. Respond as if you were a pirate, a scientist, or a travel guide. Adopt the character's voice, style, and knowledge base in your answer. Maintain the persona throughout the entire response.",
         "compare and contrast two or more topics. Explain the similarities and differences between A and B. Provide a detailed analysis of what they have in common and how they diverge. Create a table to highlight the key distinctions.",
-    ]
-
-    PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS = [
         "perform a pure arithmetic calculation with explicit numbers. Solve, multiply, add, subtract, and divide. Compute a numeric expression following the order of operations (PEMDAS/BODMAS). What is 23 plus 456 minus 78 times 9 divided by 3?",
         "evaluate a mathematical expression containing numbers and operators, such as 2 plus 3 times 4 divided by 5. Solve this numerical problem and compute the final result. Simplify the arithmetic and show the final answer. Calculate 123 * 456.",
         "convert units between measurement systems with numeric values. Convert 100 kilometers to miles, 72 fahrenheit to celsius, or 5 feet 9 inches to centimeters. Change between metric and imperial for distance, weight, volume, or temperature.",
@@ -401,9 +411,6 @@ class SkipDetector:
         "compute descriptive statistics for a dataset of numbers like 12, 15, 18, 20, 22. Calculate the mean, median, mode, average, and standard deviation. Find the variance, range, quartiles, and percentiles for a given sample distribution.",
         "calculate health and fitness metrics using a numeric formula. Compute the Body Mass Index (BMI) given a weight in pounds or kilograms and height in feet, inches, or meters. Find my basal metabolic rate (BMR) or target heart rate.",
         "calculate the time difference between two dates. How many days, hours, or minutes are between two points in time? Find the duration or elapsed time. Act as an age calculator for a birthday or find the time until a future anniversary.",
-    ]
-
-    EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS = [
         "translate the explicitly quoted text 'Hello, how are you?' to a foreign language like Spanish, French, or German. This is a translation instruction that includes the word 'translate' and the source text in quotes for direct conversion.",
         "how do you say a specific word or phrase in another language? For example, how do you say 'thank you', 'computer', or 'goodbye' in Japanese, Chinese, or Korean? This is a request for a direct translation of a common expression or term.",
         "convert a block of text or a paragraph from a source language to a target language. Translate the following content to Italian, Arabic, Portuguese, or Russian. This is a language conversion request for a larger piece of text provided.",
@@ -414,9 +421,6 @@ class SkipDetector:
         "how do I say 'I am learning to code' in German? Convert this specific English phrase into its equivalent in another language. This is a request for a practical, conversational phrase translation for personal or professional use.",
         "translate this informal or slang expression to its colloquial equivalent in Spanish. How would you say 'What's up?' in Japanese in a casual context? This request focuses on capturing the correct tone and nuance of informal language.",
         "provide the formal and professional translation for 'Please find the attached document for your review' in French. Translate this business email phrase to German, ensuring the terminology and register are appropriate for a corporate context.",
-    ]
-
-    GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS = [
         "proofread the following text for errors. Here is my draft, please check it for typos and mistakes: 'Teh quick brown fox jumpped'. Review, revise, and correct any misspellings or grammatical issues you find in the provided passage.",
         "correct the grammar in this sentence: 'She don't like it'. Resolve grammatical issues like subject-verb agreement, incorrect verb tense, pronoun reference errors, or misplaced modifiers in the provided text. Address faulty sentence structure.",
         "check the spelling and punctuation in this passage. Please review the following text and correct any textual errors: 'its a beautiful day, isnt it'. Amend mistakes with commas, periods, apostrophes, quotation marks, colons, or capitalization.",
@@ -429,7 +433,7 @@ class SkipDetector:
         "check my essay for conciseness and remove any redundancy. Help me edit this text to be more direct and to the point. Identify and eliminate wordiness, filler words, and repetitive phrases to strengthen the overall quality of the writing.",
     ]
 
-    CONVERSATIONAL_CATEGORY_DESCRIPTIONS = [
+    PERSONAL_CATEGORY_DESCRIPTIONS = [
         "discussing my family members, like my spouse, children, parents, or siblings. Mentioning relatives by name or role, such as my husband, wife, son, daughter, mother, or father. Sharing stories or asking questions about my family.",
         "expressing lasting personal feelings, core values, beliefs, or principles. My worldview, deeply held opinions, philosophy, or moral standards. Things I love, hate, or feel strongly about in life, such as my passion for animal welfare.",
         "describing my established personal hobbies, regular activities, or consistent interests. My passions and what I do in my leisure time, such as creative outlets like painting, sports like hiking, or other recreational pursuits I enjoy.",
@@ -459,11 +463,7 @@ class SkipDetector:
 
     class SkipReason(Enum):
         SKIP_SIZE = "SKIP_SIZE"
-        SKIP_TECHNICAL = "SKIP_TECHNICAL"
-        SKIP_INSTRUCTION = "SKIP_INSTRUCTION"
-        SKIP_PURE_MATH = "SKIP_PURE_MATH"
-        SKIP_TRANSLATION = "SKIP_TRANSLATION"
-        SKIP_GRAMMAR_PROOFREAD = "SKIP_GRAMMAR_PROOFREAD"
+        SKIP_NON_PERSONAL = "SKIP_NON_PERSONAL"
 
     STATUS_MESSAGES = {
         SkipReason.SKIP_SIZE: "📏 Message Length Out of Limits, skipping memory operations",
@@ -484,6 +484,7 @@ class SkipDetector:
         self.embedding_function = embedding_function
         self._reference_embeddings = None
         self._initialize_reference_embeddings()
+
 
     def _initialize_reference_embeddings(self) -> None:
         """Compute and cache embeddings for category descriptions."""
@@ -519,7 +520,14 @@ class SkipDetector:
                 "translation": np.array(translation_embeddings),
                 "grammar": np.array(grammar_embeddings),
                 "conversational": np.array(conversational_embeddings),
+                "technical": np.array(technical_embeddings),
+                "instruction": np.array(instruction_embeddings),
+                "pure_math": np.array(pure_math_embeddings),
+                "translation": np.array(translation_embeddings),
+                "grammar": np.array(grammar_embeddings),
+                "conversational": np.array(conversational_embeddings),
             }
+
 
             total_skip_categories = (
                 len(self.TECHNICAL_CATEGORY_DESCRIPTIONS)
@@ -527,6 +535,15 @@ class SkipDetector:
                 + len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS)
                 + len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS)
                 + len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
+                len(self.TECHNICAL_CATEGORY_DESCRIPTIONS)
+                + len(self.INSTRUCTION_CATEGORY_DESCRIPTIONS)
+                + len(self.PURE_MATH_CALCULATION_CATEGORY_DESCRIPTIONS)
+                + len(self.EXPLICIT_TRANSLATION_CATEGORY_DESCRIPTIONS)
+                + len(self.GRAMMAR_PROOFREADING_CATEGORY_DESCRIPTIONS)
+            )
+
+            logger.info(
+                f"SkipDetector initialized with {total_skip_categories} skip categories and {len(self.CONVERSATIONAL_CATEGORY_DESCRIPTIONS)} personal categories"
             )
 
             logger.info(
@@ -554,10 +571,13 @@ class SkipDetector:
         """Language-agnostic structural pattern detection with high confidence and low false positive rate."""
         msg_len = len(message)
 
+
         # Pattern 1: Multiple URLs (5+ full URLs indicates link lists or technical references)
+        url_pattern_count = message.count("http://") + message.count("https://")
         url_pattern_count = message.count("http://") + message.count("https://")
         if url_pattern_count >= 5:
             return self.SkipReason.SKIP_TECHNICAL.value
+
 
         # Pattern 2: Long unbroken alphanumeric strings (tokens, hashes, base64)
         words = message.split()
@@ -569,17 +589,22 @@ class SkipDetector:
             ):
                 return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
+        separator_patterns = ["---", "===", "___", "***"]
         separator_patterns = ["---", "===", "___", "***"]
         for pattern in separator_patterns:
             if message.count(pattern) >= 2:
                 return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 4: Command-line patterns with context-aware detection
+        lines_stripped = [line.strip() for line in message.split("\n") if line.strip()]
         lines_stripped = [line.strip() for line in message.split("\n") if line.strip()]
         if lines_stripped:
             actual_command_lines = 0
             for line in lines_stripped:
+                if line.startswith("$ ") and len(line) > 2:
                 if line.startswith("$ ") and len(line) > 2:
                     parts = line[2:].split()
                     if parts and parts[0].isalnum():
@@ -599,9 +624,12 @@ class SkipDetector:
                         ):
                             actual_command_lines += 1
                 elif line.startswith("# ") and len(line) > 2:
+                elif line.startswith("# ") and len(line) > 2:
                     rest = line[2:].strip()
                     if rest and not rest[0].isupper() and " " in rest:
+                    if rest and not rest[0].isupper() and " " in rest:
                         actual_command_lines += 1
+                elif line.startswith("> ") and len(line) > 2:
                 elif line.startswith("> ") and len(line) > 2:
                     pass
 
@@ -612,26 +640,35 @@ class SkipDetector:
             if actual_command_lines >= 3:
                 return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 5: High path/URL density (dots and slashes suggesting file paths or URLs)
         if msg_len > 30:
+            slash_count = message.count("/") + message.count("\\")
+            dot_count = message.count(".")
             slash_count = message.count("/") + message.count("\\")
             dot_count = message.count(".")
             path_chars = slash_count + dot_count
             if path_chars > 10 and (path_chars / msg_len) > 0.15:
                 return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 6: Markup character density (structured data)
+        markup_chars = sum(message.count(c) for c in "{}[]<>")
         markup_chars = sum(message.count(c) for c in "{}[]<>")
         if markup_chars >= 6:
             if markup_chars / msg_len > 0.10:
                 return self.SkipReason.SKIP_TECHNICAL.value
             curly_count = message.count("{") + message.count("}")
+            curly_count = message.count("{") + message.count("}")
             if curly_count >= 10:
                 return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 7: Structured nested content with colons (key: value patterns)
         line_count = message.count("\n")
+        line_count = message.count("\n")
         if line_count >= 8:
+            lines = message.split("\n")
             lines = message.split("\n")
             non_empty_lines = [line for line in lines if line.strip()]
             if non_empty_lines:
@@ -650,8 +687,10 @@ class SkipDetector:
                 ):
                     return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
         if line_count > 15:
+            lines = message.split("\n")
             lines = message.split("\n")
             non_empty_lines = [line for line in lines if line.strip()]
             if non_empty_lines:
@@ -663,7 +702,7 @@ class SkipDetector:
                 )
 
                 if markup_in_lines / len(non_empty_lines) > 0.3:
-                    return self.SkipReason.SKIP_TECHNICAL.value
+                    return self.SkipReason.SKIP_NON_PERSONAL.value
                 elif structured_lines / len(non_empty_lines) > 0.6:
                     technical_keywords = [
                         "function",
@@ -680,8 +719,10 @@ class SkipDetector:
                     ):
                         return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
         if line_count >= 3:
+            lines = message.split("\n")
             lines = message.split("\n")
             non_empty_lines = [line for line in lines if line.strip()]
             if non_empty_lines:
@@ -706,6 +747,7 @@ class SkipDetector:
                     ):
                         return self.SkipReason.SKIP_TECHNICAL.value
 
+
         # Pattern 10: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
             special_chars = sum(
@@ -717,6 +759,7 @@ class SkipDetector:
                 if alphanumeric / msg_len < 0.50:
                     return self.SkipReason.SKIP_TECHNICAL.value
 
+
         return None
 
     def detect_skip_reason(
@@ -725,7 +768,7 @@ class SkipDetector:
         """
         Detect if a message should be skipped using two-stage detection:
         1. Fast-path structural patterns (~95% confidence)
-        2. Semantic classification (for remaining cases)
+        2. Binary semantic classification (personal vs non-personal)
         Returns:
             Skip reason string if content should be skipped, None otherwise
         """
@@ -733,16 +776,19 @@ class SkipDetector:
         if size_issue:
             return size_issue
 
+
         fast_skip = self._fast_path_skip_detection(message)
         if fast_skip:
             logger.info(f"Fast-path skip: {fast_skip}")
             return fast_skip
+
 
         if self._reference_embeddings is None:
             logger.warning(
                 "SkipDetector reference embeddings not initialized, allowing message through"
             )
             return None
+
 
         try:
             message_embedding = np.array(self.embedding_function([message.strip()])[0])
@@ -751,6 +797,7 @@ class SkipDetector:
                 message_embedding, self._reference_embeddings["conversational"].T
             )
             max_conversational_similarity = float(conversational_similarities.max())
+
 
             skip_categories = [
                 (
@@ -780,6 +827,7 @@ class SkipDetector:
                 ),
             ]
 
+
             qualifying_categories = []
             margin_threshold = (
                 max_conversational_similarity + Constants.SKIP_CATEGORY_MARGIN
@@ -791,8 +839,10 @@ class SkipDetector:
                 )
                 max_similarity = float(similarities.max())
 
+
                 if max_similarity > margin_threshold:
                     qualifying_categories.append((max_similarity, cat_key, skip_reason))
+
 
             if qualifying_categories:
                 highest_similarity, highest_cat_key, highest_skip_reason = max(
@@ -803,7 +853,9 @@ class SkipDetector:
                 )
                 return highest_skip_reason.value
 
+
             return None
+
 
         except Exception as e:
             logger.error(f"Error in semantic skip detection: {e}")
@@ -923,6 +975,7 @@ CANDIDATE MEMORIES:
             logger.info(f"Skipping LLM reranking: {decision_reason}")
             selected_memories = candidate_memories[:max_injection]
 
+
         duration = time.time() - start_time
         duration_text = f" in {duration:.2f}s" if duration >= 0.01 else ""
         retrieval_method = "LLM" if should_use_llm else "Semantic"
@@ -1015,6 +1068,7 @@ class LLMConsolidationService:
             )
         else:
             candidates = []
+            threshold_info = "N/A"
             threshold_info = "N/A"
 
         logger.info(
@@ -1191,6 +1245,7 @@ class LLMConsolidationService:
                 for idx, result in enumerate(results):
                     operation = ops[idx]
 
+
                     if isinstance(result, Exception):
                         failed_count += 1
                         await self.memory_system._emit_status(
@@ -1288,6 +1343,7 @@ class LLMConsolidationService:
                 duration = time.time() - start_time
                 logger.info(f"💾 Memory Consolidation Complete In {duration:.2f}s")
 
+
                 total_operations = created_count + updated_count + deleted_count
                 if total_operations > 0 or failed_count > 0:
                     await self.memory_system._emit_status(
@@ -1301,6 +1357,7 @@ class LLMConsolidationService:
                     )
                     memory_word = "Memory" if total_operations == 1 else "Memories"
                     operations_summary = f"{', '.join(operation_details)} {memory_word}"
+
 
                     if failed_count > 0:
                         operations_summary += f" (❌ {failed_count} Failed)"
@@ -1368,6 +1425,7 @@ class Filter:
         """Initialize the Memory System filter with production validation."""
         global _SHARED_SKIP_DETECTOR_CACHE
 
+
         self.valves = self.Valves()
         self._validate_system_configuration()
 
@@ -1378,11 +1436,19 @@ class Filter:
         self._shutdown_event = asyncio.Event()
 
         self._embedding_function = None
+        self._embedding_dimension = None
         self._skip_detector = None
 
         self._llm_reranking_service = LLMRerankingService(self)
         self._llm_consolidation_service = LLMConsolidationService(self)
 
+    async def _set_pipeline_context(
+        self,
+        __event_emitter__: Optional[Callable] = None,
+        __user__: Optional[Dict[str, Any]] = None,
+        __model__: Optional[str] = None,
+        __request__: Optional[Request] = None,
+    ) -> None:
     async def _set_pipeline_context(
         self,
         __event_emitter__: Optional[Callable] = None,
@@ -1406,6 +1472,7 @@ class Filter:
                 self._embedding_function = __request__.app.state.EMBEDDING_FUNCTION
                 logger.info(f"✅ Using OpenWebUI's embedding function")
 
+
                 if self._skip_detector is None:
                     global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
                     embedding_engine = getattr(
@@ -1415,6 +1482,7 @@ class Filter:
                         __request__.app.state.config, "RAG_EMBEDDING_MODEL", ""
                     )
                     cache_key = f"{embedding_engine}:{embedding_model}"
+
 
                     async with _SHARED_SKIP_DETECTOR_CACHE_LOCK:
                         if cache_key in _SHARED_SKIP_DETECTOR_CACHE:
@@ -1438,6 +1506,7 @@ class Filter:
                                         ]
                                     return np.array(result, dtype=np.float16)
                                 return np.array(result, dtype=np.float16)
+
 
                             self._skip_detector = SkipDetector(embedding_wrapper)
                             _SHARED_SKIP_DETECTOR_CACHE[cache_key] = self._skip_detector
@@ -1512,6 +1581,15 @@ class Filter:
             embedding = np.array(embedding, dtype=np.float16)
         else:
             embedding = embedding.astype(np.float16)
+
+        embedding = np.squeeze(embedding)
+
+        if embedding.ndim != 1:
+            raise ValueError(f"Embedding must be 1D after squeeze, got shape {embedding.shape}")
+
+        if self._embedding_dimension and embedding.shape[0] != self._embedding_dimension:
+            raise ValueError(f"Embedding must have {self._embedding_dimension} dimensions, got {embedding.shape[0]}")
+
         norm = np.linalg.norm(embedding)
         return embedding / norm if norm > 0 else embedding
 
@@ -1592,9 +1670,7 @@ class Filter:
             return result_embeddings[0]
         else:
             valid_count = sum(1 for emb in result_embeddings if emb is not None)
-            logger.info(
-                f"🚀 Batch embedding: {len(text_list) - len(uncached_texts)} cached, {len(uncached_texts)} new, {valid_count}/{len(text_list)} valid"
-            )
+            logger.info(f"🚀 Batch embedding: {len(text_list) - len(uncached_texts)} cached, {len(uncached_texts)} new, {valid_count}/{len(text_list)} valid")
             return result_embeddings
 
     def _should_skip_memory_operations(self, user_message: str) -> Tuple[bool, str]:
@@ -1843,6 +1919,7 @@ class Filter:
             memory_header = f"CONTEXT: The following {'fact' if memory_count == 1 else 'facts'} about the user are provided for background only. Not all facts may be relevant to the current request."
             formatted_memories = []
 
+
             for idx, memory in enumerate(memories, 1):
                 formatted_memory = f"- {' '.join(memory['content'].split())}"
                 formatted_memories.append(formatted_memory)
@@ -1874,6 +1951,7 @@ class Filter:
         else:
             body["messages"].insert(0, {"role": "system", "content": memory_context})
 
+
         if memories and user_id:
             description = f"🧠 Injected {memory_count} {'Memory' if memory_count == 1 else 'Memories'} to Context"
             await self._emit_status(emitter, description, done=True)
@@ -1895,9 +1973,7 @@ class Filter:
             ).isoformat()
         return memory_dict
 
-    async def _compute_similarities(
-        self, user_message: str, user_id: str, user_memories: List
-    ) -> Tuple[List[Dict], float, List[Dict]]:
+    async def _compute_similarities(self, user_message: str, user_id: str, user_memories: List) -> Tuple[List[Dict], float, List[Dict]]:
         """Compute similarity scores between user message and memories."""
         if not user_memories:
             return [], self.valves.semantic_retrieval_threshold, []
@@ -1931,6 +2007,7 @@ class Filter:
         memory_data.sort(key=lambda x: x["relevance"], reverse=True)
 
         threshold = self.valves.semantic_retrieval_threshold
+        filtered_memories = [m for m in memory_data if m["relevance"] >= threshold]
         filtered_memories = [m for m in memory_data if m["relevance"] >= threshold]
         return filtered_memories, threshold, memory_data
 
@@ -2156,6 +2233,7 @@ class Filter:
                     logger.warning(f"⚠️ Skipping UPDATE operation: empty ID")
                     return Models.OperationResult.SKIPPED_EMPTY_ID.value
 
+
                 content_stripped = operation.content.strip()
                 if not content_stripped:
                     logger.warning(
@@ -2208,6 +2286,11 @@ class Filter:
             ref_path = schema["$ref"]
             if ref_path.startswith("#/$defs/"):
                 def_name = ref_path.split("/")[-1]
+
+        if "$ref" in schema:
+            ref_path = schema["$ref"]
+            if ref_path.startswith("#/$defs/"):
+                def_name = ref_path.split("/")[-1]
                 if schema_defs and def_name in schema_defs:
                     return self._remove_refs_from_schema(
                         schema_defs[def_name].copy(), schema_defs
@@ -2216,6 +2299,7 @@ class Filter:
 
         result = {}
         for key, value in schema.items():
+            if key == "$defs":
             if key == "$defs":
                 continue
             elif isinstance(value, dict):
@@ -2231,6 +2315,10 @@ class Filter:
                 ]
             else:
                 result[key] = value
+
+        if result.get("type") == "object" and "properties" in result:
+            result["required"] = list(result["properties"].keys())
+
 
         if result.get("type") == "object" and "properties" in result:
             result["required"] = list(result["properties"].keys())
@@ -2265,6 +2353,7 @@ class Filter:
 
         if response_model:
             raw_schema = response_model.model_json_schema()
+            schema_defs = raw_schema.get("$defs", {})
             schema_defs = raw_schema.get("$defs", {})
             schema = self._remove_refs_from_schema(raw_schema, schema_defs)
             schema["type"] = "object"
@@ -2319,6 +2408,12 @@ class Filter:
                 and isinstance(first_choice["message"], dict)
                 and "content" in first_choice["message"]
             ):
+            if (
+                isinstance(first_choice, dict)
+                and "message" in first_choice
+                and isinstance(first_choice["message"], dict)
+                and "content" in first_choice["message"]
+            ):
                 content = first_choice["message"]["content"]
             else:
                 raise ValueError(
@@ -2328,6 +2423,7 @@ class Filter:
             raise ValueError(f"🤖 Unexpected LLM response format: {response_data}")
 
         if response_model:
+            try:
             try:
                 parsed_data = json.loads(content)
                 return response_model.model_validate(parsed_data)
