@@ -539,7 +539,13 @@ class SkipDetector:
                 indented_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
                 if colon_lines / len(non_empty_lines) > 0.4 and indented_lines / len(non_empty_lines) > 0.5:
-                    return True
+                    words_outside_kv = 0
+                    for line in non_empty_lines:
+                        if ":" not in line:
+                            words_outside_kv += len(line.split())
+                    
+                    if words_outside_kv < 5:
+                        return True
 
         # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
         if line_count > 15:
@@ -552,17 +558,9 @@ class SkipDetector:
                 if markup_in_lines / len(non_empty_lines) > 0.3:
                     return True
                 elif structured_lines / len(non_empty_lines) > 0.6:
-                    technical_keywords = [
-                        "function",
-                        "class",
-                        "import",
-                        "return",
-                        "const",
-                        "var",
-                        "let",
-                        "def",
-                    ]
-                    if any(keyword in message.lower() for keyword in technical_keywords):
+                    operators = ['=', '+', '-', '*', '/', '<', '>', '&', '|', '!', ':', '?']
+                    operator_count = sum(message.count(op) for op in operators)
+                    if (operator_count / msg_len) > 0.05:
                         return True
 
         # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
@@ -572,19 +570,9 @@ class SkipDetector:
             if non_empty_lines:
                 indented_lines = sum(1 for line in non_empty_lines if line[0] in (" ", "\t"))
                 if indented_lines / len(non_empty_lines) > 0.5:
-                    code_indicators = [
-                        "def ",
-                        "class ",
-                        "function ",
-                        "return ",
-                        "import ",
-                        "const ",
-                        "let ",
-                        "var ",
-                        "public ",
-                        "private ",
-                    ]
-                    if any(indicator in message.lower() for indicator in code_indicators):
+                    code_ending_chars = ['{', '}', '(', ')', ';']
+                    lines_with_code_endings = sum(1 for line in non_empty_lines if line.strip().endswith(tuple(code_ending_chars)))
+                    if lines_with_code_endings / len(non_empty_lines) > 0.2:
                         return True
 
         # Pattern 10: Very high special character ratio (encoded data, technical output)
