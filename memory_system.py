@@ -54,7 +54,7 @@ class Constants:
     LLM_RERANKING_TRIGGER_MULTIPLIER = 0.8  # Multiplier for LLM reranking trigger threshold
 
     # Skip Detection
-    SKIP_CATEGORY_MARGIN = 0.20  # Margin above personal similarity for skip category classification
+    SKIP_CATEGORY_MARGIN = 0.10  # Margin above personal similarity for skip category classification
     DEDUPLICATION_SIMILARITY_THRESHOLD = 0.90  # Similarity threshold for deduplication checks
 
     # Safety & Operations
@@ -331,26 +331,34 @@ class SkipDetector:
     """Binary content classifier: personal vs non-personal using semantic analysis."""
 
     NON_PERSONAL_CATEGORY_DESCRIPTIONS = [
+        # --- Abstract Knowledge & Creative Tasks ---
+        "General knowledge questions about **impersonal, academic, or abstract topics** like geography, history, trivia, theoretical science, or definitions. 'What is the capital of France?', 'Who was the 1st president?', 'Explain quantum physics', 'Define photosynthesis.'",
+        "Creative writing prompts, requests for jokes, poems, or fictional stories. 'Write a poem about a tree', 'Generate a story where...', 'Draft a marketing email for a fake product.'",
+        "Requests for generic lists, outlines, or brainstorming on impersonal topics. 'Give me 10 ideas for a sci-fi movie', 'Brainstorm names for a tech company', 'Create an outline for an essay on the Roman Empire.'",
+        # --- Technical: Code & Programming ---
         "programming language syntax, data types like string or integer, algorithm logic, function, method, programming class, object-oriented paradigm, variable scope, control flow, import, module, package, library, framework, recursion, iteration",
         "software design patterns, creational: singleton, factory, builder; structural: adapter, decorator, facade, proxy; behavioral: observer, strategy, command, mediator, chain of responsibility; abstract interface, polymorphism, composition",
         "error handling, exception, stack trace, TypeError, NullPointerException, IndexError, segmentation fault, core dump, stack overflow, runtime vs compile-time error, assertion failed, syntax error, null pointer dereference, memory leak, bug",
         "HTTP status codes: 404 Not Found, 500 Internal Server Error, 403 Forbidden, 401 Unauthorized, 200 OK, 201 Created. API response, 502 Bad Gateway, 503 Service Unavailable, 400 Bad Request, 429 Too Many Requests, timeout, CORS",
+        "API design, endpoint, REST, GraphQL, SOAP, RPC. HTTP methods: GET, POST, PUT, DELETE, PATCH. Request-response cycle, payload, authentication token, bearer, JWT, OAuth, API key, query parameters, path variables, request body",
+        # --- Technical: DevOps, CLI & Data ---
         "terminal command line shell prompt, bash, zsh, powershell, cmd. Filesystem navigation: cd, ls, pwd. File management: mkdir, rm, cp, mv, chmod, chown. Text processing with grep, sed, awk, cat. User permissions: sudo, root access",
         "developer CLI tools, package manager, install, update. Network requests with curl, wget. Secure shell access with SSH. Version control with git: clone, commit, push, pull. Containerization with docker: run, build, compose; npm, pip",
         "data interchange formats, serialization, deserialization, parsing. JSON object, array, key-value pair. XML tags, attributes. YAML indentation, TOML, CSV, .ini properties. Config file, env variables, dictionary, map, protocol buffers",
         "WebSocket real-time bidirectional communication, server-client connection on a port, binary message protocol, handshake, HTTP upgrade, socket programming, TCP, UDP, listening, binding, accepting, streaming, pub-sub, broadcast channel",
-        "API design, endpoint, REST, GraphQL, SOAP, RPC. HTTP methods: GET, POST, PUT, DELETE, PATCH. Request-response cycle, payload, authentication token, bearer, JWT, OAuth, API key, query parameters, path variables, request body",
         "file system path, directory structure, config log bin, absolute vs relative path, operating system, filesystem, mount point, home, /tmp, /var, shared library, symbolic link, inode, file permissions, owner, group, read write execute",
-        "algorithm analysis, O(log n) time complexity, space complexity, data structures, hash table, array, linked list, queue, stack, heap, priority queue, graph, adjacency matrix, depth-first search (DFS), breadth-first search (BFS)",
-        "sorting algorithms performance and implementation, including merge sort, quicksort, insertion sort, selection sort. Understanding stable vs unstable sorts, in-place operations, comparison-based sorting, and computational complexity",
-        "markdown syntax for text formatting, horizontal rule, separator using dashes, headings, fenced code block with triple backticks, inline code, emphasis with bold and italic, strikethrough, blockquote, nested list, task list, markdown table",
-        "code formatting and style, indentation with whitespace, tabs vs spaces, nested function body, class method, structured code, syntax highlighting for languages like Python, JavaScript, Java, C++, Go, Rust, TypeScript, Prettier, ESLint",
         "container orchestration, cluster management, service scaling, replication, load balancing, namespace, pod, deployment, infrastructure, Kubernetes (K8s), Docker Swarm, container runtime (CRI-O, containerd), image registry, Dockerfile",
         "querying a database, SQL statement, database table, column, row, index, primary key, foreign key relationship, join, filter, select, insert, update, delete, relational vs NoSQL, MongoDB, PostgreSQL, MySQL, Redis, schema, transaction",
         "application logging, log output, stack trace levels like INFO, WARN, ERROR, DEBUG, FATAL. Log message components: timestamp, module, line number. Diagnostic telemetry, monitoring, and observability for system health and debugging",
+        # --- Technical: Algorithms & Testing ---
+        "algorithm analysis, O(log n) time complexity, space complexity, data structures, hash table, array, linked list, queue, stack, heap, priority queue, graph, adjacency matrix, depth-first search (DFS), breadth-first search (BFS)",
+        "sorting algorithms performance and implementation, including merge sort, quicksort, insertion sort, selection sort. Understanding stable vs unstable sorts, in-place operations, comparison-based sorting, and computational complexity",
         "regex pattern, regular expression matching, groups, capturing, backslash escapes, metacharacters, wildcards, quantifiers, character classes, lookaheads, lookbehinds, alternation, anchors, word boundary, multiline flag, global search",
         "software testing, unit test, assertion, mock, stub, fixture, test suite, test case, verification, automated QA, validation framework, JUnit, pytest, Jest. Integration, end-to-end (E2E), functional, regression, acceptance testing",
         "cloud computing platforms, infrastructure as a service (IaaS), PaaS, AWS, Azure, GCP, compute instance, region, availability zone, elasticity, distributed system, virtual machine, container, serverless, Lambda, edge computing, CDN",
+        "markdown syntax for text formatting, horizontal rule, separator using dashes, headings, fenced code block with triple backticks, inline code, emphasis with bold and italic, strikethrough, blockquote, nested list, task list, markdown table",
+        "code formatting and style, indentation with whitespace, tabs vs spaces, nested function body, class method, structured code, syntax highlighting for languages like Python, JavaScript, Java, C++, Go, Rust, TypeScript, Prettier, ESLint",
+        # --- Instructional: Formatting & Rewriting ---
         "format the output as structured data. Return the answer as JSON with specific keys and values, or as YAML. Organize information into a CSV file or a database-style table with columns and rows. Present as a list of objects or an array.",
         "style the text presentation. Use markdown formatting like bullet points, a numbered list, or a task list. Organize content into a grid or tabular layout with proper alignment. Create a hierarchical structure with nested elements for clarity.",
         "adjust the response length. Make the answer shorter, more concise, brief, or condensed. Summarize the key points. Trim down the text to reduce the overall word count or meet a specific character limit. Be less verbose and more direct.",
@@ -361,6 +369,7 @@ class SkipDetector:
         "continue the generated response. Keep going with the explanation or list. Provide more information and finish your thought. Complete the rest of the content or story. Proceed with the next steps. Do not stop until you have concluded.",
         "act as a specific persona or role. Respond as if you were a pirate, a scientist, or a travel guide. Adopt the character's voice, style, and knowledge base in your answer. Maintain the persona throughout the entire response.",
         "compare and contrast two or more topics. Explain the similarities and differences between A and B. Provide a detailed analysis of what they have in common and how they diverge. Create a table to highlight the key distinctions.",
+        # --- Instructional: Math & Calculation ---
         "perform a pure arithmetic calculation with explicit numbers. Solve, multiply, add, subtract, and divide. Compute a numeric expression following the order of operations (PEMDAS/BODMAS). What is 23 plus 456 minus 78 times 9 divided by 3?",
         "evaluate a mathematical expression containing numbers and operators, such as 2 plus 3 times 4 divided by 5. Solve this numerical problem and compute the final result. Simplify the arithmetic and show the final answer. Calculate 123 * 456.",
         "convert units between measurement systems with numeric values. Convert 100 kilometers to miles, 72 fahrenheit to celsius, or 5 feet 9 inches to centimeters. Change between metric and imperial for distance, weight, volume, or temperature.",
@@ -371,6 +380,7 @@ class SkipDetector:
         "compute descriptive statistics for a dataset of numbers like 12, 15, 18, 20, 22. Calculate the mean, median, mode, average, and standard deviation. Find the variance, range, quartiles, and percentiles for a given sample distribution.",
         "calculate health and fitness metrics using a numeric formula. Compute the Body Mass Index (BMI) given a weight in pounds or kilograms and height in feet, inches, or meters. Find my basal metabolic rate (BMR) or target heart rate.",
         "calculate the time difference between two dates. How many days, hours, or minutes are between two points in time? Find the duration or elapsed time. Act as an age calculator for a birthday or find the time until a future anniversary.",
+        # --- Instructional: Translation ---
         "translate the explicitly quoted text 'Hello, how are you?' to a foreign language like Spanish, French, or German. This is a translation instruction that includes the word 'translate' and the source text in quotes for direct conversion.",
         "how do you say a specific word or phrase in another language? For example, how do you say 'thank you', 'computer', or 'goodbye' in Japanese, Chinese, or Korean? This is a request for a direct translation of a common expression or term.",
         "convert a block of text or a paragraph from a source language to a target language. Translate the following content to Italian, Arabic, Portuguese, or Russian. This is a language conversion request for a larger piece of text provided.",
@@ -381,6 +391,7 @@ class SkipDetector:
         "how do I say 'I am learning to code' in German? Convert this specific English phrase into its equivalent in another language. This is a request for a practical, conversational phrase translation for personal or professional use.",
         "translate this informal or slang expression to its colloquial equivalent in Spanish. How would you say 'What's up?' in Japanese in a casual context? This request focuses on capturing the correct tone and nuance of informal language.",
         "provide the formal and professional translation for 'Please find the attached document for your review' in French. Translate this business email phrase to German, ensuring the terminology and register are appropriate for a corporate context.",
+        # --- Instructional: Proofreading & Editing ---
         "proofread the following text for errors. Here is my draft, please check it for typos and mistakes: 'Teh quick brown fox jumpped'. Review, revise, and correct any misspellings or grammatical issues you find in the provided passage.",
         "correct the grammar in this sentence: 'She don't like it'. Resolve grammatical issues like subject-verb agreement, incorrect verb tense, pronoun reference errors, or misplaced modifiers in the provided text. Address faulty sentence structure.",
         "check the spelling and punctuation in this passage. Please review the following text and correct any textual errors: 'its a beautiful day, isnt it'. Amend mistakes with commas, periods, apostrophes, quotation marks, colons, or capitalization.",
@@ -394,31 +405,16 @@ class SkipDetector:
     ]
 
     PERSONAL_CATEGORY_DESCRIPTIONS = [
-        "discussing my family members, like my spouse, children, parents, or siblings. Mentioning relatives by name or role, such as my husband, wife, son, daughter, mother, or father. Sharing stories or asking questions about my family.",
-        "expressing lasting personal feelings, core values, beliefs, or principles. My worldview, deeply held opinions, philosophy, or moral standards. Things I love, hate, or feel strongly about in life, such as my passion for animal welfare.",
-        "describing my established personal hobbies, regular activities, or consistent interests. My passions and what I do in my leisure time, such as creative outlets like painting, sports like hiking, or other recreational pursuits I enjoy.",
-        "sharing information about my career or current job. My position, workplace, company name, or professional role. My responsibilities at work, my occupation, or the industry I work in. My employment situation, job title, and employer.",
-        "talking about my major life plans, long-term aspirations, or personal goals. My dreams for the future, important intentions, and what I want to achieve. Milestones, ambitions, or a bucket list. My personal vision or mission in life.",
-        "reflecting on a meaningful personal story, memory, or significant past life experience. A transformative event or milestone that shaped me. A defining moment, a lesson learned from my childhood, or a memory from growing up that I cherish.",
-        "sharing my personal background, like my hometown, childhood upbringing, or education. My cultural heritage, ethnicity, or where I grew up. Information about the university I graduated from or formative life experiences that define my identity.",
-        "asking for personal advice about a specific life situation, relationship, family decision, or career choice. Seeking guidance on a personal challenge, problem, or dilemma I'm facing. Needing help or counsel on a difficult issue or conflict.",
-        "requesting personalized recommendations based on my stated context, preferences, or needs. For example, suggesting a movie based on genres I like, or a restaurant that fits my dietary restrictions, budget, and location requirements.",
-        "talking about my personal learning journey or educational pursuits. A course or class I'm taking, a certification I'm working on, or a degree program. My efforts in personal development, skill acquisition, or knowledge building.",
-        "discussing my child, spouse, or other family member's interests or needs. Helping my son with a school project, finding a hobby for my daughter, or supporting my partner's career goals. Questions related to supporting my loved ones.",
-        "describing my personal challenges with a work task, learning a new skill, or a technology problem. Feeling confused, stressed, or overwhelmed. Dealing with imposter syndrome, self-doubt, or needing assistance with a difficult project.",
-        "planning a personal event like a party, celebration, or family gathering. Organizing my daughter's birthday, my son's graduation, or a wedding anniversary. Discussing arrangements for a special occasion or festive milestone commemoration.",
-        "mentioning my pet, such as my dog, cat, or another animal companion. I adopted a puppy, or I have a cat named Luna. Discussing my pet's breed, age, behavior, or my general feelings about animals, pet care, and pet ownership.",
-        "discussing moving or relocating to a new city, state, or country. I just moved into a new apartment or house. The personal reasons for my move, like a job or family. The process of settling into a new home, neighborhood, or location.",
-        "stating my long-term dietary preference or restriction, such as being vegetarian, vegan, pescatarian, gluten-free, or having a food allergy. My eating habits and favorite cuisines, based on health, ethical, or personal reasons.",
-        "talking about my religious or cultural practices. I celebrate Christmas, observe Ramadan, or follow Buddhist traditions. My faith, beliefs, spirituality, or cultural background. Religious identity, worship, prayers, rituals, or holidays.",
-        "describing my living situation. I live with roommates, alone, with my parents, or with a partner. I bought or rented a house or apartment. My home environment, housing arrangements, and household composition in my current residence.",
-        "talking about my personal finances, such as saving for a down payment on a house, managing a tight budget, or planning for retirement. My investment goals, strategies for handling debt, or my general approach to financial security.",
-        "working on a personal creative project. I am writing a novel, composing music, painting a picture, or developing a side project. A meaningful creative pursuit or hobby that involves a personal, emotional investment and artistic expression.",
-        "describing my fitness routine or exercise habits. I go to the gym, run, do yoga, or swim regularly. My consistent activities for health and wellness, my workout regimen, or my training schedule and fitness goals for an active lifestyle.",
-        "sharing my personal values and what I care about deeply. I believe strongly in environmental sustainability, social justice, or equality. Causes I support, my principles, ethics, morals, and convictions that shape my worldview and priorities.",
-        "discussing a personal achievement or milestone. I got promoted, received an award, won a competition, or completed a marathon. A significant accomplishment I am proud of, a goal I reached, or a success that marked a personal triumph.",
-        "referencing my social preferences. I am an introvert, an extrovert, or an ambivert. I prefer small groups over large crowds. My personality trait regarding socializing, my interaction style, and where I get my energy in social settings.",
-        "discussing everyday problems or logistics. Dealing with a car repair, a household issue like a broken appliance, losing my keys, managing appointments, or troubleshooting a personal device. Life's daily challenges and practical solutions.",
+        "**Identity, Beliefs, & Background:** Stating or asking about my name, age, personality, core beliefs, values, religion, cultural background, education, or personal history.",
+        "**Health & Wellness:** Stating or asking about my medical conditions, diet, allergies, fitness routines, sleep habits, physical appearance, or mental well-being.",
+        "**Relationships & Social Life:** Stating or asking about my family, spouse, children, friends, romantic partners, pets, social activities, or community involvement.",
+        "**Career, Work, & Skills:** Stating or asking about my job, workplace, company, career path, professional skills, colleagues, or learning new skills for work.",
+        "**Finance & Legal:** Stating or asking about my personal finances, budgeting, investments, savings, debt, taxes, or personal legal situations.",
+        "**Home, Location, & Transport:** Stating or asking about my home, living situation, neighborhood, city/country, commute, or personal vehicles.",
+        "**Hobbies, Interests, & Media:** Stating or asking about my hobbies, pastimes, creative projects, sports, or my preferences for media like movies, books, music, or games.",
+        "**Plans, Goals, & Aspirations:** Stating or asking about my future plans, appointments, upcoming events, travel plans, or my long-term personal or professional goals.",
+        "**History & Personal Memories:** Stating or asking about my past life events, significant memories, personal anecdotes, or my travel history.",
+        "**Problems, Advice, & Opinions:** Stating my preferences/opinions (likes/dislikes) or asking for personalized advice, recommendations, or help with an everyday problem in any personal domain.",
     ]
 
     class SkipReason(Enum):
@@ -543,7 +539,7 @@ class SkipDetector:
                     for line in non_empty_lines:
                         if ":" not in line:
                             words_outside_kv += len(line.split())
-                    
+
                     if words_outside_kv < 5:
                         return True
 
@@ -558,7 +554,7 @@ class SkipDetector:
                 if markup_in_lines / len(non_empty_lines) > 0.3:
                     return True
                 elif structured_lines / len(non_empty_lines) > 0.6:
-                    operators = ['=', '+', '-', '*', '/', '<', '>', '&', '|', '!', ':', '?']
+                    operators = ["=", "+", "-", "*", "/", "<", ">", "&", "|", "!", ":", "?"]
                     operator_count = sum(message.count(op) for op in operators)
                     if (operator_count / msg_len) > 0.05:
                         return True
@@ -570,7 +566,7 @@ class SkipDetector:
             if non_empty_lines:
                 indented_lines = sum(1 for line in non_empty_lines if line[0] in (" ", "\t"))
                 if indented_lines / len(non_empty_lines) > 0.5:
-                    code_ending_chars = ['{', '}', '(', ')', ';']
+                    code_ending_chars = ["{", "}", "(", ")", ";"]
                     lines_with_code_endings = sum(1 for line in non_empty_lines if line.strip().endswith(tuple(code_ending_chars)))
                     if lines_with_code_endings / len(non_empty_lines) > 0.2:
                         return True
@@ -616,14 +612,12 @@ class SkipDetector:
             non_personal_similarities = np.dot(message_embedding, self._reference_embeddings["non_personal"].T)
             max_non_personal_similarity = float(non_personal_similarities.max())
 
+            threshold = max_personal_similarity + Constants.SKIP_CATEGORY_MARGIN
             if (max_non_personal_similarity - max_personal_similarity) > Constants.SKIP_CATEGORY_MARGIN:
-                logger.info(
-                    f"🚫 Skipping message: non-personal content detected "
-                    f"(non-personal sim {max_non_personal_similarity:.3f} > "
-                    f"personal sim {max_personal_similarity:.3f} + {Constants.SKIP_CATEGORY_MARGIN:.3f})"
-                )
+                logger.info(f"🚫 Skipping: non-personal content (sim {max_non_personal_similarity:.3f} > {threshold:.3f})")
                 return self.SkipReason.SKIP_NON_PERSONAL.value
 
+            logger.info(f"✅ Allowing: personal content (sim {max_non_personal_similarity:.3f} <= {threshold:.3f})")
             return None
 
         except Exception as e:
@@ -1208,6 +1202,7 @@ class Filter:
                         else:
                             logger.info(f"🤖 Initializing skip detector with OpenWebUI embeddings: {cache_key}")
                             embedding_fn = self._embedding_function
+                            normalize_fn = self._normalize_embedding
 
                             def embedding_wrapper(
                                 texts: Union[str, List[str]],
@@ -1215,9 +1210,9 @@ class Filter:
                                 result = embedding_fn(texts, prefix=None, user=None)
                                 if isinstance(result, list):
                                     if isinstance(result[0], list):
-                                        return [np.array(emb, dtype=np.float16) for emb in result]
-                                    return np.array(result, dtype=np.float16)
-                                return np.array(result, dtype=np.float16)
+                                        return [normalize_fn(emb) for emb in result]
+                                    return np.array([normalize_fn(result)])
+                                return normalize_fn(result)
 
                             self._skip_detector = SkipDetector(embedding_wrapper)
                             _SHARED_SKIP_DETECTOR_CACHE[cache_key] = self._skip_detector
