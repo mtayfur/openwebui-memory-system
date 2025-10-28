@@ -1665,7 +1665,7 @@ class Filter:
         model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
 
         if self.valves.memory_model:
-            logger.info(f"🧠 Using the custom model for memory : {model_to_use}")
+            logger.info(f"🤖 Using the custom model for memory : {model_to_use}")
 
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 
@@ -1719,7 +1719,7 @@ class Filter:
         model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
 
         if self.valves.memory_model:
-            logger.info(f"🧠 Using the custom model for memory : {model_to_use}")
+            logger.info(f"🤖 Using the custom model for memory : {model_to_use}")
 
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 

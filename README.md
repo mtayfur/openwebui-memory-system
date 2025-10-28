@@ -66,7 +66,7 @@ Uses OpenWebUI's configured embedding model (supports Ollama, OpenAI, Azure Open
 ## Configuration
 
 Customize behavior through valves:
-- **model**: LLM for consolidation and reranking (default: `google/gemini-2.5-flash-lite`)
+- **model**: LLM for consolidation and reranking. Set to "Default" to use the current chat model, or specify a model ID to use that specific model
 - **max_message_chars**: Maximum message length before skipping operations (default: 2500)
 - **max_memories_returned**: Context injection limit (default: 10)
 - **semantic_retrieval_threshold**: Minimum similarity score (default: 0.5)
