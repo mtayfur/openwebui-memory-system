@@ -54,7 +54,7 @@ class Constants:
     LLM_RERANKING_TRIGGER_MULTIPLIER = 0.8  # Multiplier for LLM reranking trigger threshold
 
     # Skip Detection
-    SKIP_CATEGORY_MARGIN = 0.10  # Margin above personal similarity for skip category classification
+    SKIP_CATEGORY_MARGIN = 0.15  # Margin above personal similarity for skip category classification
     DEDUPLICATION_SIMILARITY_THRESHOLD = 0.90  # Similarity threshold for deduplication checks
 
     # Safety & Operations
