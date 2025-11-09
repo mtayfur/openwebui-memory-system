@@ -67,7 +67,7 @@ class Constants:
     # Status Emit Levels
     STATUS_LEVEL_BASIC = 0  # Maps to "Basic" - Show only summary counts
     STATUS_LEVEL_DETAILED = 1  # Maps to "Detailed" - Show everything including full diagnostics
-    
+
     # Mapping from enum string values to numeric levels for comparison
     STATUS_LEVEL_MAP = {
         "Basic": 0,
@@ -663,7 +663,7 @@ class LLMRerankingService:
         self.memory_system = memory_system
 
     def _should_use_llm_reranking(self, memories: List[Dict]) -> Tuple[bool, str]:
-        if not self.memory_system.valves.enable_llm_reranking:
+        if self.memory_system.valves.llm_reranking_trigger_multiplier <= 0:
             return False, "LLM reranking disabled"
 
         llm_trigger_threshold = int(self.memory_system.valves.max_memories_returned * self.memory_system.valves.llm_reranking_trigger_multiplier)
@@ -748,9 +748,7 @@ CANDIDATE MEMORIES:
 
             if not selected_memories:
                 logger.info("📭 No relevant memories after LLM analysis")
-                await self.memory_system._emit_status(
-                    emitter, f"📭 No Relevant Memories After LLM Analysis", done=True, level=Constants.STATUS_LEVEL_BASIC
-                )
+                await self.memory_system._emit_status(emitter, f"📭 No Relevant Memories After LLM Analysis", done=True, level=Constants.STATUS_LEVEL_BASIC)
                 return selected_memories, analysis_info
         else:
             logger.info(f"Skipping LLM reranking: {decision_reason}")
@@ -1146,25 +1144,13 @@ class Filter:
             default=Constants.MAX_MEMORIES_PER_RETRIEVAL,
             description="Maximum number of memories to return in context",
         )
-        max_message_chars: int = Field(
-            default=Constants.MAX_MESSAGE_CHARS,
-            description="Maximum user message length before skipping memory operations",
-        )
         semantic_retrieval_threshold: float = Field(
             default=Constants.SEMANTIC_RETRIEVAL_THRESHOLD,
             description="Minimum similarity threshold for memory retrieval",
         )
-        relaxed_semantic_threshold_multiplier: float = Field(
-            default=Constants.RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER,
-            description="Adjusts similarity threshold for memory consolidation (lower = more candidates)",
-        )
-        enable_llm_reranking: bool = Field(
-            default=True,
-            description="Enable LLM-based memory reranking for improved contextual selection",
-        )
         llm_reranking_trigger_multiplier: float = Field(
             default=Constants.LLM_RERANKING_TRIGGER_MULTIPLIER,
-            description="Controls when LLM reranking activates (lower = more aggressive)",
+            description="Controls when LLM reranking activates (0.0 = disabled, lower = more aggressive)",
         )
         skip_category_margin: float = Field(
             default=Constants.SKIP_CATEGORY_MARGIN,
@@ -1254,7 +1240,7 @@ class Filter:
     def _get_retrieval_threshold(self, is_consolidation: bool = False) -> float:
         """Calculate retrieval threshold for semantic similarity filtering."""
         if is_consolidation:
-            return self.valves.semantic_retrieval_threshold * self.valves.relaxed_semantic_threshold_multiplier
+            return self.valves.semantic_retrieval_threshold * Constants.RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER
         return self.valves.semantic_retrieval_threshold
 
     def _extract_text_from_content(self, content) -> str:
@@ -1379,7 +1365,7 @@ class Filter:
             return result_embeddings
 
     def _should_skip_memory_operations(self, user_message: str) -> Tuple[bool, str]:
-        skip_reason = self._skip_detector.detect_skip_reason(user_message, self.valves.max_message_chars, memory_system=self)
+        skip_reason = self._skip_detector.detect_skip_reason(user_message, Constants.MAX_MESSAGE_CHARS, memory_system=self)
         if skip_reason:
             status_key = SkipDetector.SkipReason(skip_reason)
             return True, SkipDetector.STATUS_MESSAGES[status_key]

@@ -67,12 +67,11 @@ Uses OpenWebUI's configured embedding model (supports Ollama, OpenAI, Azure Open
 
 Customize behavior through valves:
 - **model**: LLM for consolidation and reranking. Set to "Default" to use the current chat model, or specify a model ID to use that specific model
-- **max_message_chars**: Maximum message length before skipping operations (default: 2500)
 - **max_memories_returned**: Context injection limit (default: 10)
 - **semantic_retrieval_threshold**: Minimum similarity score (default: 0.5)
-- **relaxed_semantic_threshold_multiplier**: Adjusts threshold for consolidation (default: 0.9)
-- **enable_llm_reranking**: Toggle smart reranking (default: true)
-- **llm_reranking_trigger_multiplier**: When to activate LLM reranking (default: 0.5 = 50%)
+- **llm_reranking_trigger_multiplier**: When to activate LLM reranking (0.0 = disabled, default: 0.5 = 50%)
+- **skip_category_margin**: Margin for skip detection classification (default: 0.20)
+- **status_emit_level**: Status message verbosity - Basic or Detailed (default: Detailed)
 
 ## Performance Optimizations
 
