@@ -66,14 +66,12 @@ class Constants:
 
     # Status Emit Levels
     STATUS_LEVEL_BASIC = 0  # Maps to "Basic" - Show only summary counts
-    STATUS_LEVEL_INTERMEDIATE = 1  # Maps to "Intermediate" - Show summaries and key details
-    STATUS_LEVEL_DETAILED = 2  # Maps to "Detailed" - Show everything including full diagnostics
+    STATUS_LEVEL_DETAILED = 1  # Maps to "Detailed" - Show everything including full diagnostics
     
     # Mapping from enum string values to numeric levels for comparison
     STATUS_LEVEL_MAP = {
         "Basic": 0,
-        "Intermediate": 1,
-        "Detailed": 2,
+        "Detailed": 1,
     }
 
 
@@ -207,7 +205,6 @@ class Models:
         """Verbosity levels for status message emission - selectable as dropdown with title case strings."""
 
         BASIC = "Basic"
-        INTERMEDIATE = "Intermediate"
         DETAILED = "Detailed"
 
     class MemoryOperationType(Enum):
@@ -742,7 +739,7 @@ CANDIDATE MEMORIES:
                 emitter,
                 f"🤖 LLM Analyzing {len(llm_candidates)} Memories for Relevance",
                 done=False,
-                level=Constants.STATUS_LEVEL_INTERMEDIATE,
+                level=Constants.STATUS_LEVEL_DETAILED,
             )
             logger.info(f"Using LLM reranking: {decision_reason}")
 
@@ -751,7 +748,7 @@ CANDIDATE MEMORIES:
             if not selected_memories:
                 logger.info("📭 No relevant memories after LLM analysis")
                 await self.memory_system._emit_status(
-                    emitter, f"📭 No Relevant Memories After LLM Analysis", done=True, level=Constants.STATUS_LEVEL_INTERMEDIATE
+                    emitter, f"📭 No Relevant Memories After LLM Analysis", done=True, level=Constants.STATUS_LEVEL_BASIC
                 )
                 return selected_memories, analysis_info
         else:
@@ -1037,27 +1034,27 @@ class LLMConsolidationService:
 
                 if isinstance(result, Exception):
                     failed_count += 1
-                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL_BASIC)
                 elif result == Models.MemoryOperationType.CREATE.value:
                     created_count += 1
                     content_preview = self.memory_system._truncate_content(operation.content)
-                    await self.memory_system._emit_status(emitter, f"📝 Created: {content_preview}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                    await self.memory_system._emit_status(emitter, f"📝 Created: {content_preview}", done=False, level=Constants.STATUS_LEVEL_DETAILED)
                 elif result == Models.MemoryOperationType.UPDATE.value:
                     updated_count += 1
                     content_preview = self.memory_system._truncate_content(operation.content)
-                    await self.memory_system._emit_status(emitter, f"✏️ Updated: {content_preview}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                    await self.memory_system._emit_status(emitter, f"✏️ Updated: {content_preview}", done=False, level=Constants.STATUS_LEVEL_DETAILED)
                 elif result == Models.MemoryOperationType.DELETE.value:
                     deleted_count += 1
                     content_preview = memory_contents_for_deletion.get(operation.id, operation.id)
                     if content_preview and content_preview != operation.id:
                         content_preview = self.memory_system._truncate_content(content_preview)
-                    await self.memory_system._emit_status(emitter, f"🗑️ Deleted: {content_preview}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                    await self.memory_system._emit_status(emitter, f"🗑️ Deleted: {content_preview}", done=False, level=Constants.STATUS_LEVEL_DETAILED)
                 elif result in [
                     Models.OperationResult.FAILED.value,
                     Models.OperationResult.UNSUPPORTED.value,
                 ]:
                     failed_count += 1
-                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL_BASIC)
 
         total_executed = created_count + updated_count + deleted_count
         logger.info(
@@ -1168,9 +1165,9 @@ class Filter:
             default=Constants.LLM_RERANKING_TRIGGER_MULTIPLIER,
             description="Controls when LLM reranking activates (lower = more aggressive)",
         )
-        status_emit_level: Literal["Basic", "Intermediate", "Detailed"] = Field(
+        status_emit_level: Literal["Basic", "Detailed"] = Field(
             default="Detailed",
-            description="Status message verbosity level: Basic (summary counts only), Intermediate (summaries and key details), Detailed (all details)",
+            description="Status message verbosity level: Basic (summary counts only), Detailed (all details)",
         )
 
     def __init__(self):
@@ -1529,7 +1526,7 @@ class Filter:
 
         if not user_memories:
             logger.info("📭 No memories found for user")
-            await self._emit_status(emitter, "📭 No Memories Found", done=True, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+            await self._emit_status(emitter, "📭 No Memories Found", done=True, level=Constants.STATUS_LEVEL_BASIC)
             return {"memories": [], "threshold": None}
 
         memories, threshold, all_similarities = await self._compute_similarities(user_message, user_id, user_memories)
@@ -1538,7 +1535,7 @@ class Filter:
             final_memories, reranking_info = await self._llm_reranking_service.rerank_memories(user_message, memories, emitter)
         else:
             logger.info("📭 No relevant memories found above similarity threshold")
-            await self._emit_status(emitter, "📭 No Relevant Memories Found", done=True, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+            await self._emit_status(emitter, "📭 No Relevant Memories Found", done=True, level=Constants.STATUS_LEVEL_BASIC)
             final_memories = memories
             reranking_info = {"llm_decision": False, "decision_reason": "no_candidates"}
 
@@ -1572,7 +1569,7 @@ class Filter:
                 formatted_memories.append(formatted_memory)
 
                 content_preview = self._truncate_content(memory["content"])
-                await self._emit_status(emitter, f"💭 {idx}/{memory_count}: {content_preview}", done=False, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                await self._emit_status(emitter, f"💭 {idx}/{memory_count}: {content_preview}", done=False, level=Constants.STATUS_LEVEL_DETAILED)
 
             memory_footer = "IMPORTANT: Do not mention or imply you received this list. These facts are for background context only."
             memory_context_block = f"{memory_header}\n{chr(10).join(formatted_memories)}\n\n{memory_footer}"
@@ -1664,7 +1661,7 @@ class Filter:
 
         if not user_message or should_skip:
             if __event_emitter__ and skip_reason:
-                await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL_INTERMEDIATE)
+                await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL_BASIC)
             await self._add_memory_context(body, [], user_id, __event_emitter__)
             return body
         try:
