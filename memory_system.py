@@ -642,8 +642,9 @@ class SkipDetector:
             non_personal_similarities = np.dot(message_embedding, self._reference_embeddings["non_personal"].T)
             max_non_personal_similarity = float(non_personal_similarities.max())
 
-            threshold = max_personal_similarity + Constants.SKIP_CATEGORY_MARGIN
-            if (max_non_personal_similarity - max_personal_similarity) > Constants.SKIP_CATEGORY_MARGIN:
+            margin = memory_system.valves.skip_category_margin
+            threshold = max_personal_similarity + margin
+            if (max_non_personal_similarity - max_personal_similarity) > margin:
                 logger.info(f"🚫 Skipping: non-personal content (sim {max_non_personal_similarity:.3f} > {threshold:.3f})")
                 return self.SkipReason.SKIP_NON_PERSONAL.value
 
@@ -1164,6 +1165,10 @@ class Filter:
         llm_reranking_trigger_multiplier: float = Field(
             default=Constants.LLM_RERANKING_TRIGGER_MULTIPLIER,
             description="Controls when LLM reranking activates (lower = more aggressive)",
+        )
+        skip_category_margin: float = Field(
+            default=Constants.SKIP_CATEGORY_MARGIN,
+            description="Margin above personal similarity for skip category classification (higher = more conservative skip detection)",
         )
         status_emit_level: Literal["Basic", "Detailed"] = Field(
             default="Detailed",
