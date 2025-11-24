@@ -1343,11 +1343,8 @@ class Filter:
 
             raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
 
-            if isinstance(raw_embeddings, list) and len(raw_embeddings) > 0:
-                if isinstance(raw_embeddings[0], (list, np.ndarray)):
-                    new_embeddings = [self._normalize_embedding(emb) for emb in raw_embeddings]
-                else:
-                    new_embeddings = [self._normalize_embedding(raw_embeddings)]
+            if isinstance(raw_embeddings, list) and len(raw_embeddings) > 0 and isinstance(raw_embeddings[0], (list, np.ndarray)):
+                new_embeddings = [self._normalize_embedding(emb) for emb in raw_embeddings]
             else:
                 new_embeddings = [self._normalize_embedding(raw_embeddings)]
 
@@ -1402,15 +1399,11 @@ class Filter:
         """Get user memories with timeout handling."""
         if timeout is None:
             timeout = Constants.DATABASE_OPERATION_TIMEOUT_SEC
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(Memories.get_memories_by_user_id, user_id),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"⏱️ Memory retrieval timed out after {timeout}s")
-        except Exception as e:
-            raise RuntimeError(f"💾 Memory retrieval failed: {str(e)}")
+        
+        return await asyncio.wait_for(
+            asyncio.to_thread(Memories.get_memories_by_user_id, user_id),
+            timeout=timeout,
+        )
 
     def _log_retrieved_memories(self, memories: List[Dict[str, Any]], context_type: str = "semantic") -> None:
         """Log retrieved memories with concise formatting showing key statistics and semantic values."""
@@ -1915,14 +1908,10 @@ class Filter:
         except Exception as e:
             raise RuntimeError(f"🤖 LLM query failed: {str(e)}")
 
-        try:
-            if hasattr(response, "body") and hasattr(getattr(response, "body", None), "decode"):
-                body = getattr(response, "body")
-                response_data = json.loads(body.decode("utf-8"))
-            else:
-                response_data = response
-        except (json.JSONDecodeError, AttributeError) as e:
-            raise RuntimeError(f"🔍 Failed to decode response body: {str(e)}")
+        if hasattr(response, "body"):
+            response_data = json.loads(response.body.decode("utf-8"))
+        else:
+            response_data = response
 
         if isinstance(response_data, dict) and "choices" in response_data and isinstance(response_data["choices"], list) and len(response_data["choices"]) > 0:
             first_choice = response_data["choices"][0]
