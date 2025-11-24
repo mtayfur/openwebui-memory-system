@@ -54,7 +54,7 @@ class Constants:
     LLM_RERANKING_TRIGGER_MULTIPLIER = 0.8  # Multiplier for LLM reranking trigger threshold
 
     # Skip Detection
-    SKIP_CATEGORY_MARGIN = 0.15  # Margin above personal similarity for skip category classification
+    SKIP_CATEGORY_MARGIN = 0.20  # Margin above personal similarity for skip category classification
     DEDUPLICATION_SIMILARITY_THRESHOLD = 0.90  # Similarity threshold for deduplication checks
 
     # Safety & Operations
@@ -68,7 +68,7 @@ class Constants:
     STATUS_LEVEL_BASIC = 0  # Maps to "Basic" - Show only summary counts
     STATUS_LEVEL_INTERMEDIATE = 1  # Maps to "Intermediate" - Show summaries and key details
     STATUS_LEVEL_DETAILED = 2  # Maps to "Detailed" - Show everything including full diagnostics
-    
+
     # Mapping from enum string values to numeric levels for comparison
     STATUS_LEVEL_MAP = {
         "Basic": 0,
@@ -352,9 +352,12 @@ class SkipDetector:
 
     NON_PERSONAL_CATEGORY_DESCRIPTIONS = [
         # --- Abstract Knowledge & Creative Tasks ---
-        "General knowledge questions about **impersonal, academic, or abstract topics** like geography, history, trivia, theoretical science, or definitions. 'What is the capital of France?', 'Who was the 1st president?', 'Explain quantum physics', 'Define photosynthesis.'",
-        "Creative writing prompts, requests for jokes, poems, or fictional stories. 'Write a poem about a tree', 'Generate a story where...', 'Draft a marketing email for a fake product.'",
-        "Requests for generic lists, outlines, or brainstorming on impersonal topics. 'Give me 10 ideas for a sci-fi movie', 'Brainstorm names for a tech company', 'Create an outline for an essay on the Roman Empire.'",
+        "General knowledge questions about **impersonal, academic, or abstract topics** like geography, world history, trivia, theoretical science, or definitions. 'What is the capital of France?', 'Who was the 1st president?', 'Explain quantum physics'.",
+        "General knowledge explanations of concepts, mechanisms, or processes. 'Define photosynthesis', 'How does a combustion engine work?', 'Explain how blockchain technology operates', 'What is the theory of relativity?', 'Describe DNA replication'.",
+        "Creative writing prompts, requests for jokes, poems, fictional stories, or content generation. 'Write a poem about a tree', 'Generate a story where...', 'Draft a marketing email for a fake product', 'Create a character backstory', 'Write a song'.",
+        "Requests for generic recommendations, lists, outlines, or brainstorming on impersonal topics without personal context. 'Give me 10 ideas for a sci-fi movie', 'Brainstorm names for a tech company', 'Create an outline for an essay on Rome'.",
+        "Requests for advice, suggestions, or recommendations where the PRIMARY INTENT is to get help or information, even if personal context is mentioned. 'What should I give my daughter for her birthday?', 'Can you recommend restaurants in my city?'.",
+        "Seeking recommendations or help with personal decisions where the question is the focus, not stating facts. 'What are good honeymoon destinations?', 'Help me choose between job offers', 'What car should I buy for my commute?', 'Which laptop is best?'.",
         # --- Technical: Code & Programming ---
         "programming language syntax, data types like string or integer, algorithm logic, function, method, programming class, object-oriented paradigm, variable scope, control flow, import, module, package, library, framework, recursion, iteration",
         "software design patterns, creational: singleton, factory, builder; structural: adapter, decorator, facade, proxy; behavioral: observer, strategy, command, mediator, chain of responsibility; abstract interface, polymorphism, composition",
@@ -412,29 +415,39 @@ class SkipDetector:
         "translate this informal or slang expression to its colloquial equivalent in Spanish. How would you say 'What's up?' in Japanese in a casual context? This request focuses on capturing the correct tone and nuance of informal language.",
         "provide the formal and professional translation for 'Please find the attached document for your review' in French. Translate this business email phrase to German, ensuring the terminology and register are appropriate for a corporate context.",
         # --- Instructional: Proofreading & Editing ---
-        "proofread the following text for errors. Here is my draft, please check it for typos and mistakes: 'Teh quick brown fox jumpped'. Review, revise, and correct any misspellings or grammatical issues you find in the provided passage.",
-        "correct the grammar in this sentence: 'She don't like it'. Resolve grammatical issues like subject-verb agreement, incorrect verb tense, pronoun reference errors, or misplaced modifiers in the provided text. Address faulty sentence structure.",
-        "check the spelling and punctuation in this passage. Please review the following text and correct any textual errors: 'its a beautiful day, isnt it'. Amend mistakes with commas, periods, apostrophes, quotation marks, colons, or capitalization.",
-        "review this sentence and tell me if it is grammatically correct. Is the sentence 'There going to they're house' proper? Validate the grammar, check word usage (like their/there/they're), and verify that the sentence is well-formed.",
-        "proofread my email before I send it. Here is the draft. Please check for clarity, flow, coherence, and readability. Improve my writing, make it better, and polish the text to ensure it sounds professional and is free of textual errors.",
-        "fix the punctuation in this run-on sentence or comma splice. Correct sentence fragments and ensure proper use of capitalization. Address errors with apostrophes, quotation marks, periods, semicolons, dashes, and other punctuation marks.",
-        "suggest a better word choice or alternative phrasing. Can you help me improve my vocabulary and diction in this sentence? Replace words with more precise or impactful synonyms. Refine the expression for better clarity, tone, or style.",
-        "rewrite this sentence from passive voice to active voice. Help me make my writing more direct and concise by eliminating passive constructions. Restructure the sentence to be more engaging and clear. Identify and fix faulty parallelism.",
-        "improve the clarity and flow of this paragraph. Make the writing smoother and more readable. Restructure the sentences for better coherence and logical progression. Ensure the ideas connect seamlessly and eliminate any awkward phrasing.",
-        "check my essay for conciseness and remove any redundancy. Help me edit this text to be more direct and to the point. Identify and eliminate wordiness, filler words, and repetitive phrases to strengthen the overall quality of the writing.",
+        "proofread, review, revise, or edit provided text for errors. Here is my draft, check it for typos and mistakes. Correct grammar, spelling, punctuation. Review emails, essays, documents, reviews, or any submitted content for clarity and flow.",
+        "proofread for coherence, readability, or professionalism. Polish the text to ensure it sounds professional and is free of errors. Check for textual quality, sentence structure, and overall writing effectiveness in submitted drafts or passages.",
+        "correct grammatical issues like subject-verb agreement, incorrect verb tense, pronoun reference errors, misplaced modifiers, or faulty sentence structure. Validate if a sentence is grammatically correct. Check word usage (their/there/they're).",
+        "fix passive voice, run-on sentences, comma splices, or sentence fragments. Address punctuation errors with apostrophes, quotation marks, periods, semicolons, dashes. Ensure proper capitalization and resolve structural writing problems.",
+        "improve writing quality: suggest better word choice, alternative phrasing, synonyms, or refined expression. Enhance vocabulary and diction. Make writing more direct, concise, engaging, smooth, or readable. Restructure sentences for coherence.",
+        "remove wordiness, filler words, or redundancy from text. Improve logical progression of ideas. Eliminate awkward phrasing. Make the writing flow better and ensure ideas connect seamlessly for better overall quality and readability.",
+        "rewrite, rephrase, paraphrase, or reformulate text using different wording. Restate information in another way. Express the same meaning but with new structure or vocabulary. Adapt tone to be more formal, academic, or professional.",
+        "adapt writing tone to be more casual, friendly, or conversational. Change the register and voice to suit a specific audience or context level. Adjust the writing style while maintaining the core message and information presented in the original text.",
+        # --- Transient States & Momentary Situations ---
+        "describing current temporary emotional states, fleeting feelings, or momentary moods without lasting significance. 'I'm feeling stressed this week', 'I'm tired today', 'I'm excited right now', 'I'm frustrated at the moment', 'I'm happy'.",
+        "temporary emotions or passing states that are not enduring personal facts. 'I'm angry about this situation', 'I'm nervous about tomorrow', 'I feel great today', 'I'm worried right now'. These are transient feelings, not biographical information.",
+        "mentioning one-time events, temporary situations, or transient circumstances without lasting impact. 'I have a presentation on Friday', 'I'm at the store', 'I'm working late tonight', 'I ate pizza for lunch', 'It's raining here today'.",
+        "describing momentary situations, current locations, or immediate activities. 'I'm in a meeting', 'I'm driving to work', 'I'm cooking dinner', 'I'm watching a movie'. These are temporary circumstances, not biographical or lasting personal facts.",
     ]
 
     PERSONAL_CATEGORY_DESCRIPTIONS = [
-        "**Identity, Beliefs, & Background:** Stating or asking about my name, age, personality, core beliefs, values, religion, cultural background, education, or personal history.",
-        "**Health & Wellness:** Stating or asking about my medical conditions, diet, allergies, fitness routines, sleep habits, physical appearance, or mental well-being.",
-        "**Relationships & Social Life:** Stating or asking about my family, spouse, children, friends, romantic partners, pets, social activities, or community involvement.",
-        "**Career, Work, & Skills:** Stating or asking about my job, workplace, company, career path, professional skills, colleagues, or learning new skills for work.",
-        "**Finance & Legal:** Stating or asking about my personal finances, budgeting, investments, savings, debt, taxes, or personal legal situations.",
-        "**Home, Location, & Transport:** Stating or asking about my home, living situation, neighborhood, city/country, commute, or personal vehicles.",
-        "**Hobbies, Interests, & Media:** Stating or asking about my hobbies, pastimes, creative projects, sports, or my preferences for media like movies, books, music, or games.",
-        "**Plans, Goals, & Aspirations:** Stating or asking about my future plans, appointments, upcoming events, travel plans, or my long-term personal or professional goals.",
-        "**History & Personal Memories:** Stating or asking about my past life events, significant memories, personal anecdotes, or my travel history.",
-        "**Problems, Advice, & Opinions:** Stating my preferences/opinions (likes/dislikes) or asking for personalized advice, recommendations, or help with an everyday problem in any personal domain.",
+        "**Identity Core:** Directly stating facts about my name, birthdate, age, nationality, ethnicity, personality traits, core beliefs, values, religion, cultural background, education history, academic degrees, or formative personal experiences.",
+        "**Medical History:** Directly stating facts about my medical diagnoses, chronic conditions, past surgeries or medical procedures, medications I currently take or have taken in the past, supplements I use, vision or hearing conditions, allergies.",
+        "**Physical Health:** Directly stating facts about my dietary restrictions, physical measurements like height and weight, fitness routines, sleep patterns, physical appearance, mental health conditions, ongoing symptoms, or wellness practices I follow.",
+        "**Family & Relationships:** Directly stating facts about my family members including their names, ages, relationships to me, occupations, or health conditions. Information about my spouse, partner, children, friends, or romantic relationship status.",
+        "**Social & Pets:** Directly stating facts about my pets including their names and breeds, social activities I participate in, community involvement, or details about the people in my life and how I interact with my social circle and broader community.",
+        "**Job & Workplace:** Directly stating facts about my current or past job titles, employer names, workplace, industry, career transitions, professional certifications, technical skills I possess, colleagues, or work arrangements like remote or hybrid.",
+        "**Professional Growth:** Directly stating facts about professional development activities I'm engaged in or completed, training programs, career milestones, work history, or any facts related to my professional life, expertise, and career trajectory.",
+        "**Finance & Legal:** Directly stating facts about my financial situation, income level, budgeting constraints, investments I hold, savings goals, debts I have, tax situations, legal matters I'm involved in, or financial obligations and commitments.",
+        "**Home & Location:** Directly stating facts about my residence type, living arrangements, roommates, neighborhood, city, country, relocations I've made, commute details, vehicles I own or drive with make/model/year, or transportation methods I use.",
+        "**Hobbies & Activities:** Directly stating facts about my hobbies, recreational activities, creative projects I work on, sports I play or follow, specific media preferences like favorite movies, books, music genres, games, or personal collections.",
+        "**Leisure & Entertainment:** Directly stating facts about pastimes I regularly engage in, entertainment preferences, artistic pursuits, leisure activities, or any facts about how I spend my free time and what I enjoy doing for relaxation or fulfillment.",
+        "**Future Plans:** Directly stating facts about my scheduled future plans, confirmed appointments, upcoming events I'm attending, booked travel itineraries, stated long-term personal goals, career aspirations, or life milestones I'm working toward.",
+        "**Life Events:** Directly stating facts about my past life events, significant personal milestones like graduations, marriages, or births, historical medical events, previous jobs or living situations, travel history, or memorable experiences.",
+        "**Personal History:** Directly stating facts about memorable personal experiences with temporal context, past achievements, formative moments, historical facts about my life journey, or biographical information about my past that shaped who I am.",
+        "**Emotional Landscape:** Directly stating my current emotional state toward lasting situations, not momentary feelings. My attitudes toward specific people or relationships, deep-seated preferences, strong aversions or dislikes, or motivations.",
+        "**Inner Life:** Directly stating facts about sources of stress or joy in my life, ongoing emotional experiences, persistent feelings about important matters, or enduring attitudes and perspectives that reflect my emotional landscape and inner life.",
+        "**Possessions & Brands:** Directly stating facts about specific items I own like devices, appliances, or vehicles with details. Products I regularly use or consume, brands I prefer, subscriptions I have, or material possessions with identifying details.",
     ]
 
     class SkipReason(Enum):
@@ -632,8 +645,9 @@ class SkipDetector:
             non_personal_similarities = np.dot(message_embedding, self._reference_embeddings["non_personal"].T)
             max_non_personal_similarity = float(non_personal_similarities.max())
 
-            threshold = max_personal_similarity + Constants.SKIP_CATEGORY_MARGIN
-            if (max_non_personal_similarity - max_personal_similarity) > Constants.SKIP_CATEGORY_MARGIN:
+            margin = memory_system.valves.skip_category_margin
+            threshold = max_personal_similarity + margin
+            if (max_non_personal_similarity - max_personal_similarity) > margin:
                 logger.info(f"🚫 Skipping: non-personal content (sim {max_non_personal_similarity:.3f} > {threshold:.3f})")
                 return self.SkipReason.SKIP_NON_PERSONAL.value
 
@@ -652,7 +666,7 @@ class LLMRerankingService:
         self.memory_system = memory_system
 
     def _should_use_llm_reranking(self, memories: List[Dict]) -> Tuple[bool, str]:
-        if not self.memory_system.valves.enable_llm_reranking:
+        if self.memory_system.valves.llm_reranking_trigger_multiplier <= 0:
             return False, "LLM reranking disabled"
 
         llm_trigger_threshold = int(self.memory_system.valves.max_memories_returned * self.memory_system.valves.llm_reranking_trigger_multiplier)
@@ -1135,28 +1149,20 @@ class Filter:
             default=Constants.MAX_MEMORIES_PER_RETRIEVAL,
             description="Maximum number of memories to return in context",
         )
-        max_message_chars: int = Field(
-            default=Constants.MAX_MESSAGE_CHARS,
-            description="Maximum user message length before skipping memory operations",
-        )
         semantic_retrieval_threshold: float = Field(
             default=Constants.SEMANTIC_RETRIEVAL_THRESHOLD,
             description="Minimum similarity threshold for memory retrieval",
         )
-        relaxed_semantic_threshold_multiplier: float = Field(
-            default=Constants.RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER,
-            description="Adjusts similarity threshold for memory consolidation (lower = more candidates)",
-        )
-        enable_llm_reranking: bool = Field(
-            default=True,
-            description="Enable LLM-based memory reranking for improved contextual selection",
-        )
         llm_reranking_trigger_multiplier: float = Field(
             default=Constants.LLM_RERANKING_TRIGGER_MULTIPLIER,
-            description="Controls when LLM reranking activates (lower = more aggressive)",
+            description="Controls when LLM reranking activates (0.0 = disabled, lower = more aggressive)",
+        )
+        skip_category_margin: float = Field(
+            default=Constants.SKIP_CATEGORY_MARGIN,
+            description="Margin above personal similarity for skip category classification (higher = more conservative skip detection)",
         )
         status_emit_level: Literal["Basic", "Intermediate", "Detailed"] = Field(
-            default="Detailed",
+            default="Intermediate",
             description="Status message verbosity level: Basic (summary counts only), Intermediate (summaries and key details), Detailed (all details)",
         )
 
@@ -1239,7 +1245,7 @@ class Filter:
     def _get_retrieval_threshold(self, is_consolidation: bool = False) -> float:
         """Calculate retrieval threshold for semantic similarity filtering."""
         if is_consolidation:
-            return self.valves.semantic_retrieval_threshold * self.valves.relaxed_semantic_threshold_multiplier
+            return self.valves.semantic_retrieval_threshold * Constants.RELAXED_SEMANTIC_THRESHOLD_MULTIPLIER
         return self.valves.semantic_retrieval_threshold
 
     def _extract_text_from_content(self, content) -> str:
@@ -1364,7 +1370,7 @@ class Filter:
             return result_embeddings
 
     def _should_skip_memory_operations(self, user_message: str) -> Tuple[bool, str]:
-        skip_reason = self._skip_detector.detect_skip_reason(user_message, self.valves.max_message_chars, memory_system=self)
+        skip_reason = self._skip_detector.detect_skip_reason(user_message, Constants.MAX_MESSAGE_CHARS, memory_system=self)
         if skip_reason:
             status_key = SkipDetector.SkipReason(skip_reason)
             return True, SkipDetector.STATUS_MESSAGES[status_key]
@@ -1641,18 +1647,18 @@ class Filter:
 
         user_message, should_skip, skip_reason = self._process_user_message(body)
 
+        skip_cache_key = self._cache_key(self._cache_manager.SKIP_STATE_CACHE, user_id, user_message or "")
+        await self._cache_manager.put(
+            user_id,
+            self._cache_manager.SKIP_STATE_CACHE,
+            skip_cache_key,
+            should_skip,
+        )
+
         if not user_message or should_skip:
             if __event_emitter__ and skip_reason:
                 await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL_INTERMEDIATE)
             await self._add_memory_context(body, [], user_id, __event_emitter__)
-
-            skip_cache_key = self._cache_key(self._cache_manager.SKIP_STATE_CACHE, user_id, user_message or "")
-            await self._cache_manager.put(
-                user_id,
-                self._cache_manager.SKIP_STATE_CACHE,
-                skip_cache_key,
-                True,
-            )
             return body
         try:
             memory_cache_key = self._cache_key(self._cache_manager.MEMORY_CACHE, user_id)
@@ -1702,7 +1708,16 @@ class Filter:
         if not user_id:
             return body
 
-        user_message, _, _ = self._process_user_message(body)
+        messages = body.get("messages", [])
+        user_message = None
+        for message in reversed(messages):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content", "")
+            user_message = self._extract_text_from_content(content)
+            if user_message:
+                break
+
         if not user_message:
             return body
 
