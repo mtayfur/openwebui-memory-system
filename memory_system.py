@@ -1205,7 +1205,7 @@ class Filter:
                 self._embedding_function = __request__.app.state.EMBEDDING_FUNCTION
                 logger.info(f"✅ Using OpenWebUI's embedding function")
 
-                self._detect_embedding_dimension()
+                await self._detect_embedding_dimension()
 
                 if self._skip_detector is None:
                     global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
@@ -1219,22 +1219,22 @@ class Filter:
                             self._skip_detector = _SHARED_SKIP_DETECTOR_CACHE[cache_key]
                         else:
                             logger.info(f"🤖 Initializing skip detector with OpenWebUI embeddings: {cache_key}")
-                            embedding_fn = self._embedding_function
-                            normalize_fn = self._normalize_embedding
-
+                            
                             def embedding_wrapper(
                                 texts: Union[str, List[str]],
                             ) -> Union[np.ndarray, List[np.ndarray]]:
-                                result = embedding_fn(texts, prefix=None, user=None)
+                                result = asyncio.get_event_loop().run_until_complete(
+                                    self._call_embedding_function(texts, prefix=None, user=None)
+                                )
                                 if isinstance(result, list):
                                     if isinstance(result[0], list):
-                                        return [normalize_fn(emb) for emb in result]
-                                    return np.array([normalize_fn(result)])
-                                return normalize_fn(result)
+                                        return [self._normalize_embedding(emb) for emb in result]
+                                    return np.array([self._normalize_embedding(result)])
+                                return self._normalize_embedding(result)
 
                             self._skip_detector = SkipDetector(embedding_wrapper)
                             _SHARED_SKIP_DETECTOR_CACHE[cache_key] = self._skip_detector
-                            logger.info(f"✅ Skip detector initialized and cached")
+                            logger.info(f"✅ Skip detector initialized and cached")                  
 
     def _truncate_content(self, content: str, max_length: Optional[int] = None) -> str:
         """Truncate content with ellipsis if needed."""
@@ -1282,16 +1282,59 @@ class Filter:
     def _compute_text_hash(self, text: str) -> str:
         """Compute SHA256 hash for text caching."""
         return hashlib.sha256(text.encode()).hexdigest()
+    
+    async def _call_embedding_function(
+        self, 
+        texts: Union[str, List[str]], 
+        prefix: Optional[str] = None, 
+        user: Optional[Any] = None
+    ) -> Union[List[float], List[List[float]]]:
+        """
+        Unified wrapper for calling the embedding function (sync or async).
+        Compatible with OpenWebUI 0.6.37+ where EMBEDDING_FUNCTION is asynchronous.
+        """
+        if self._embedding_function is None:
+            raise RuntimeError("Embedding function not initialized")
+        
+        if asyncio.iscoroutinefunction(self._embedding_function):
+            return await self._embedding_function(texts, prefix=prefix, user=user)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, 
+                self._embedding_function, 
+                texts, 
+                prefix, 
+                user
+            )       
 
-    def _detect_embedding_dimension(self) -> None:
+    async def _detect_embedding_dimension(self) -> None:
         """Detect embedding dimension by generating a test embedding."""
         try:
-            test_embedding = self._embedding_function(["dummy"], prefix=None, user=None)
+            test_embedding = await self._call_embedding_function(
+                ["dummy"], 
+                prefix=None, 
+                user=None
+            )
+            
             if isinstance(test_embedding, list):
-                test_embedding = test_embedding[0]
-            self._embedding_dimension = np.squeeze(test_embedding).shape[0]
+                if len(test_embedding) > 0:
+                    first_elem = test_embedding[0]
+                    if isinstance(first_elem, list):
+                        test_embedding = first_elem
+                else:
+                    raise ValueError("Empty embedding returned")
+            
+            test_embedding = np.squeeze(test_embedding)
+            
+            if test_embedding.ndim != 1:
+                raise ValueError(f"Expected 1D embedding after squeeze, got shape {test_embedding.shape}")
+            
+            self._embedding_dimension = test_embedding.shape[0]
             logger.info(f"🎯 Detected embedding dimension: {self._embedding_dimension}")
+            
         except Exception as e:
+            logger.error(f"Failed to detect embedding dimension: {str(e)}")
             raise RuntimeError(f"Failed to detect embedding dimension: {str(e)}")
 
     def _normalize_embedding(self, embedding: Union[List[float], np.ndarray]) -> np.ndarray:
@@ -1312,8 +1355,12 @@ class Filter:
         norm = np.linalg.norm(embedding)
         return embedding / norm if norm > 0 else embedding
 
-    async def _generate_embeddings(self, texts: Union[str, List[str]], user_id: str) -> Union[np.ndarray, List[np.ndarray]]:
-        """Unified embedding generation for single text or batch with optimized caching using OpenWebUI's embedding function."""
+    async def _generate_embeddings(
+        self, 
+        texts: Union[str, List[str]], 
+        user_id: str
+    ) -> Union[np.ndarray, List[np.ndarray]]:
+        """Unified embedding generation for single text or batch with optimized caching."""
         is_single = isinstance(texts, str)
         text_list = [texts] if is_single else texts
 
@@ -1325,7 +1372,7 @@ class Filter:
         for i, text in enumerate(text_list):
             if not text or len(str(text).strip()) < Constants.MIN_MESSAGE_CHARS:
                 if is_single:
-                    raise ValueError("📏 Text too short for embedding generation")
+                    raise ValueError("📝 Text too short for embedding generation")
                 result_embeddings.append(None)
                 continue
 
@@ -1343,8 +1390,11 @@ class Filter:
         if uncached_texts:
             user = await asyncio.to_thread(Users.get_user_by_id, user_id) if hasattr(self, "__user__") else None
 
-            loop = asyncio.get_event_loop()
-            raw_embeddings = await loop.run_in_executor(None, self._embedding_function, uncached_texts, None, user)
+            raw_embeddings = await self._call_embedding_function(
+                uncached_texts, 
+                prefix=None, 
+                user=user
+            )
 
             if isinstance(raw_embeddings, list) and len(raw_embeddings) > 0:
                 if isinstance(raw_embeddings[0], (list, np.ndarray)):
@@ -1366,7 +1416,10 @@ class Filter:
             return result_embeddings[0]
         else:
             valid_count = sum(1 for emb in result_embeddings if emb is not None)
-            logger.info(f"🚀 Batch embedding: {len(text_list) - len(uncached_texts)} cached, {len(uncached_texts)} new, {valid_count}/{len(text_list)} valid")
+            logger.info(
+                f"🚀 Batch embedding: {len(text_list) - len(uncached_texts)} cached, "
+                f"{len(uncached_texts)} new, {valid_count}/{len(text_list)} valid"
+            )
             return result_embeddings
 
     def _should_skip_memory_operations(self, user_message: str) -> Tuple[bool, str]:
