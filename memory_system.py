@@ -482,6 +482,14 @@ class SkipDetector:
     def _fast_path_skip_detection(self, message: str) -> Optional[bool]:
         """Language-agnostic structural pattern detection with high confidence and low false positive rate."""
         msg_len = len(message)
+        if msg_len == 0:
+            return None
+
+        # Pre-compute line structures used by multiple patterns
+        lines = message.split("\n")
+        line_count = len(lines)
+        non_empty_lines = [line for line in lines if line.strip()]
+        non_empty_count = len(non_empty_lines)
 
         # Pattern 1: Multiple URLs (5+ full URLs indicates link lists or technical references)
         url_pattern_count = message.count("http://") + message.count("https://")
@@ -489,8 +497,7 @@ class SkipDetector:
             return True
 
         # Pattern 2: Long unbroken alphanumeric strings (tokens, hashes, base64)
-        words = message.split()
-        for word in words:
+        for word in message.split():
             cleaned = word.strip('.,;:!?()[]{}"\'"')
             if len(cleaned) > 80 and cleaned.replace("-", "").replace("_", "").isalnum():
                 return True
@@ -502,25 +509,25 @@ class SkipDetector:
                 return True
 
         # Pattern 4: Command-line patterns with context-aware detection
-        lines_stripped = [line.strip() for line in message.split("\n") if line.strip()]
-        if lines_stripped:
+        if non_empty_lines:
             actual_command_lines = 0
-            for line in lines_stripped:
-                if line.startswith("$ ") and len(line) > 2:
-                    parts = line[2:].split()
+            for line in non_empty_lines:
+                stripped = line.strip()
+                if stripped.startswith("$ ") and len(stripped) > 2:
+                    parts = stripped[2:].split()
                     if parts and parts[0].isalnum():
                         actual_command_lines += 1
-                elif "$ " in line:
-                    dollar_index = line.find("$ ")
-                    if dollar_index > 0 and line[dollar_index - 1] in (" ", ":", "\t"):
-                        parts = line[dollar_index + 2 :].split()
+                elif "$ " in stripped:
+                    dollar_index = stripped.find("$ ")
+                    if dollar_index > 0 and stripped[dollar_index - 1] in (" ", ":", "\t"):
+                        parts = stripped[dollar_index + 2 :].split()
                         if parts and len(parts[0]) > 0 and (parts[0].isalnum() or parts[0] in ["curl", "wget", "git", "npm", "pip", "docker"]):
                             actual_command_lines += 1
-                elif line.startswith("# ") and len(line) > 2:
-                    rest = line[2:].strip()
+                elif stripped.startswith("# ") and len(stripped) > 2:
+                    rest = stripped[2:].strip()
                     if rest and not rest[0].isupper() and " " in rest:
                         actual_command_lines += 1
-                elif line.startswith("> ") and len(line) > 2:
+                elif stripped.startswith("> ") and len(stripped) > 2:
                     pass
 
             if actual_command_lines >= 1 and any(c in message for c in ["http://", "https://", " | "]):
@@ -546,50 +553,40 @@ class SkipDetector:
                 return True
 
         # Pattern 7: Structured nested content with colons (key: value patterns)
-        line_count = message.count("\n")
-        if line_count >= 8:
-            lines = message.split("\n")
-            non_empty_lines = [line for line in lines if line.strip()]
-            if non_empty_lines:
-                colon_lines = sum(1 for line in non_empty_lines if ":" in line and not line.strip().startswith("#"))
-                indented_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
+        if line_count >= 8 and non_empty_count > 0:
+            colon_lines = sum(1 for line in non_empty_lines if ":" in line and not line.strip().startswith("#"))
+            indented_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
-                if colon_lines / len(non_empty_lines) > 0.4 and indented_lines / len(non_empty_lines) > 0.5:
-                    words_outside_kv = 0
-                    for line in non_empty_lines:
-                        if ":" not in line:
-                            words_outside_kv += len(line.split())
+            if colon_lines / non_empty_count > 0.4 and indented_lines / non_empty_count > 0.5:
+                words_outside_kv = 0
+                for line in non_empty_lines:
+                    if ":" not in line:
+                        words_outside_kv += len(line.split())
 
-                    if words_outside_kv < 5:
-                        return True
+                if words_outside_kv < 5:
+                    return True
 
         # Pattern 8: Highly structured multi-line content (require markup chars for technical confidence)
-        if line_count > 15:
-            lines = message.split("\n")
-            non_empty_lines = [line for line in lines if line.strip()]
-            if non_empty_lines:
-                markup_in_lines = sum(1 for line in non_empty_lines if any(c in line for c in "{}[]<>"))
-                structured_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
+        if line_count > 15 and non_empty_count > 0:
+            markup_in_lines = sum(1 for line in non_empty_lines if any(c in line for c in "{}[]<>"))
+            structured_lines = sum(1 for line in non_empty_lines if line.startswith((" ", "\t")))
 
-                if markup_in_lines / len(non_empty_lines) > 0.3:
+            if markup_in_lines / non_empty_count > 0.3:
+                return True
+            elif structured_lines / non_empty_count > 0.6:
+                operators = ["=", "+", "-", "*", "/", "<", ">", "&", "|", "!", ":", "?"]
+                operator_count = sum(message.count(op) for op in operators)
+                if (operator_count / msg_len) > 0.05:
                     return True
-                elif structured_lines / len(non_empty_lines) > 0.6:
-                    operators = ["=", "+", "-", "*", "/", "<", ">", "&", "|", "!", ":", "?"]
-                    operator_count = sum(message.count(op) for op in operators)
-                    if (operator_count / msg_len) > 0.05:
-                        return True
 
         # Pattern 9: Code-like indentation pattern (require code indicators to avoid false positives from bullet lists)
-        if line_count >= 3:
-            lines = message.split("\n")
-            non_empty_lines = [line for line in lines if line.strip()]
-            if non_empty_lines:
-                indented_lines = sum(1 for line in non_empty_lines if line[0] in (" ", "\t"))
-                if indented_lines / len(non_empty_lines) > 0.5:
-                    code_ending_chars = ["{", "}", "(", ")", ";"]
-                    lines_with_code_endings = sum(1 for line in non_empty_lines if line.strip().endswith(tuple(code_ending_chars)))
-                    if lines_with_code_endings / len(non_empty_lines) > 0.2:
-                        return True
+        if line_count >= 3 and non_empty_count > 0:
+            indented_lines = sum(1 for line in non_empty_lines if line[0] in (" ", "\t"))
+            if indented_lines / non_empty_count > 0.5:
+                code_ending_chars = ["{", "}", "(", ")", ";"]
+                lines_with_code_endings = sum(1 for line in non_empty_lines if line.strip().endswith(tuple(code_ending_chars)))
+                if lines_with_code_endings / non_empty_count > 0.2:
+                    return True
 
         # Pattern 10: Very high special character ratio (encoded data, technical output)
         if msg_len > 50:
