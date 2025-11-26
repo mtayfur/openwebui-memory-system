@@ -125,8 +125,8 @@ Explanation: Dog memory enriched with related context (Emma, birthday gift, age 
 ### Example 3
 Message: "Can you recommend some good tapas restaurants in Barcelona? I moved here from Madrid last month."
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025]
-Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved to Barcelona Spain in August 2025"}}]}}
-Explanation: Relocation is a significant life event. The request for recommendations is instructional and is ignored.
+Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved from Madrid to Barcelona Spain in August 2025"}}]}}
+Explanation: Relocation is a significant life event. The CREATE includes origin city for complete context. The request for recommendations is instructional and is ignored.
 
 ### Example 4
 Message: "My wife Sofia and I just got married in August. What are some good honeymoon destinations?"
@@ -141,10 +141,10 @@ Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived 
 Explanation: The user's move and marriage are significant, related life events. They are consolidated into a single memory. The request for a recommendation is ignored.
 
 ### Example 6
-Message: "I'm feeling stressed about work this week and looking for some relaxation tips. I have a big presentation coming up on Friday."
+Message: "Fix this Python function that calculates my age from my birthdate of March 15, 1990."
 Memories: []
 Return: {{"ops": []}}
-Explanation: Transient state (stress) and a request for information (relaxation tips). The primary intent is instructional/analytical, and the facts (presentation) are not significant, lasting personal narrative. Nothing to store.
+Explanation: The primary intent is technical (fix code). Personal data (birthdate) is provided as input for the task, not as a direct personal statement. The user is not stating "My birthday is March 15, 1990" but using it as a parameter. SKIP.
 """
 
     MEMORY_RERANKING = f"""You are the Memory Relevance Analyzer.
@@ -343,102 +343,100 @@ class SkipDetector:
 
     NON_PERSONAL_CATEGORY_DESCRIPTIONS = [
         # --- Abstract Knowledge & Creative Tasks ---
-        "General knowledge questions about **impersonal, academic, or abstract topics** like geography, world history, trivia, theoretical science, or definitions. 'What is the capital of France?', 'Who was the 1st president?', 'Explain quantum physics'.",
-        "General knowledge explanations of concepts, mechanisms, or processes. 'Define photosynthesis', 'How does a combustion engine work?', 'Explain how blockchain technology operates', 'What is the theory of relativity?', 'Describe DNA replication'.",
-        "Creative writing prompts, requests for jokes, poems, fictional stories, or content generation. 'Write a poem about a tree', 'Generate a story where...', 'Draft a marketing email for a fake product', 'Create a character backstory', 'Write a song'.",
-        "Requests for generic recommendations, lists, outlines, or brainstorming on impersonal topics without personal context. 'Give me 10 ideas for a sci-fi movie', 'Brainstorm names for a tech company', 'Create an outline for an essay on Rome'.",
-        "Requests for advice, suggestions, or recommendations where the PRIMARY INTENT is to get help or information, even if personal context is mentioned. 'What should I give my daughter for her birthday?', 'Can you recommend restaurants in my city?'.",
-        "Seeking recommendations or help with personal decisions where the question is the focus, not stating facts. 'What are good honeymoon destinations?', 'Help me choose between job offers', 'What car should I buy for my commute?', 'Which laptop is best?'.",
+        "General knowledge questions about impersonal, academic, or abstract topics like geography, world history, trivia, theoretical science, definitions, or factual information about the world.",
+        "Explanations of concepts, mechanisms, or processes like photosynthesis, combustion engines, blockchain technology, DNA replication, the theory of relativity, or how things work in general.",
+        "Creative writing prompts, requests for jokes, poems, fictional stories, songs, character backstories, marketing copy, or any form of content generation and creative output.",
+        "Requests for generic recommendations, lists, outlines, or brainstorming on impersonal topics without personal context like movie ideas, company names, or essay structures.",
+        "Requests for advice, suggestions, or recommendations where the primary intent is to get help or information, even if personal context is mentioned as part of the question.",
+        "Seeking recommendations or help with personal decisions where the question is the focus, not stating facts, such as choosing destinations, products, jobs, or comparing options.",
+        "Requests to generate, create, or design images, logos, graphics, illustrations, banners, visual content, or any form of media generation and visual design output.",
+        "Requests to summarize, condense, extract key points, provide TL;DR, or distill the main takeaways from articles, documents, long text, or any form of content.",
         # --- Technical: Code & Programming ---
-        "programming language syntax, data types like string or integer, algorithm logic, function, method, programming class, object-oriented paradigm, variable scope, control flow, import, module, package, library, framework, recursion, iteration",
-        "software design patterns, creational: singleton, factory, builder; structural: adapter, decorator, facade, proxy; behavioral: observer, strategy, command, mediator, chain of responsibility; abstract interface, polymorphism, composition",
-        "error handling, exception, stack trace, TypeError, NullPointerException, IndexError, segmentation fault, core dump, stack overflow, runtime vs compile-time error, assertion failed, syntax error, null pointer dereference, memory leak, bug",
-        "HTTP status codes: 404 Not Found, 500 Internal Server Error, 403 Forbidden, 401 Unauthorized, 200 OK, 201 Created. API response, 502 Bad Gateway, 503 Service Unavailable, 400 Bad Request, 429 Too Many Requests, timeout, CORS",
-        "API design, endpoint, REST, GraphQL, SOAP, RPC. HTTP methods: GET, POST, PUT, DELETE, PATCH. Request-response cycle, payload, authentication token, bearer, JWT, OAuth, API key, query parameters, path variables, request body",
+        "Programming language syntax, data types, algorithm logic, functions, methods, classes, object-oriented concepts, variable scope, control flow, modules, packages, or frameworks.",
+        "Software design patterns including creational patterns like singleton and factory, structural patterns like adapter and decorator, and behavioral patterns like observer and strategy.",
+        "Error handling, exceptions, stack traces, debugging errors like TypeError, NullPointerException, IndexError, segmentation fault, syntax errors, memory leaks, or runtime errors.",
+        "HTTP status codes like 404 Not Found, 500 Internal Server Error, 200 OK, API responses, timeouts, CORS issues, Bad Gateway, Service Unavailable, or Too Many Requests.",
+        "API design, REST endpoints, GraphQL, HTTP methods like GET, POST, PUT, DELETE, request-response cycles, authentication tokens, JWT, OAuth, API keys, or query parameters.",
+        "Requests to review, debug, fix, or analyze code, find bugs in snippets, explain why code is not working, or identify issues with implementations and suggest corrections.",
         # --- Technical: DevOps, CLI & Data ---
-        "terminal command line shell prompt, bash, zsh, powershell, cmd. Filesystem navigation: cd, ls, pwd. File management: mkdir, rm, cp, mv, chmod, chown. Text processing with grep, sed, awk, cat. User permissions: sudo, root access",
-        "developer CLI tools, package manager, install, update. Network requests with curl, wget. Secure shell access with SSH. Version control with git: clone, commit, push, pull. Containerization with docker: run, build, compose; npm, pip",
-        "data interchange formats, serialization, deserialization, parsing. JSON object, array, key-value pair. XML tags, attributes. YAML indentation, TOML, CSV, .ini properties. Config file, env variables, dictionary, map, protocol buffers",
-        "WebSocket real-time bidirectional communication, server-client connection on a port, binary message protocol, handshake, HTTP upgrade, socket programming, TCP, UDP, listening, binding, accepting, streaming, pub-sub, broadcast channel",
-        "file system path, directory structure, config log bin, absolute vs relative path, operating system, filesystem, mount point, home, /tmp, /var, shared library, symbolic link, inode, file permissions, owner, group, read write execute",
-        "container orchestration, cluster management, service scaling, replication, load balancing, namespace, pod, deployment, infrastructure, Kubernetes (K8s), Docker Swarm, container runtime (CRI-O, containerd), image registry, Dockerfile",
-        "querying a database, SQL statement, database table, column, row, index, primary key, foreign key relationship, join, filter, select, insert, update, delete, relational vs NoSQL, MongoDB, PostgreSQL, MySQL, Redis, schema, transaction",
-        "application logging, log output, stack trace levels like INFO, WARN, ERROR, DEBUG, FATAL. Log message components: timestamp, module, line number. Diagnostic telemetry, monitoring, and observability for system health and debugging",
+        "Terminal commands, shell prompts, bash, zsh, powershell, filesystem navigation with cd, ls, pwd, file management with mkdir, rm, cp, mv, chmod, or text processing tools.",
+        "Developer CLI tools, package managers, network requests with curl or wget, SSH access, version control with git commands, or containerization with docker and compose.",
+        "Data interchange formats like JSON, XML, YAML, TOML, CSV, serialization, deserialization, parsing, config files, environment variables, or protocol buffers and schemas.",
+        "WebSocket connections, real-time communication, socket programming, TCP, UDP, server-client connections, handshakes, HTTP upgrades, streaming, or pub-sub messaging patterns.",
+        "File system paths, directory structures, absolute versus relative paths, operating systems, mount points, symbolic links, inodes, or file permissions with read, write, execute.",
+        "Container orchestration, cluster management, service scaling, load balancing, Kubernetes pods, deployments, namespaces, Docker Swarm, container runtimes, or image registries.",
+        "Database queries, SQL statements, tables, columns, rows, indexes, primary and foreign keys, joins, filters, relational versus NoSQL databases like MongoDB, PostgreSQL, or Redis.",
+        "Application logging, log levels like INFO, WARN, ERROR, DEBUG, stack traces, timestamps, diagnostic telemetry, monitoring, or observability for system health and debugging.",
         # --- Technical: Algorithms & Testing ---
-        "algorithm analysis, O(log n) time complexity, space complexity, data structures, hash table, array, linked list, queue, stack, heap, priority queue, graph, adjacency matrix, depth-first search (DFS), breadth-first search (BFS)",
-        "sorting algorithms performance and implementation, including merge sort, quicksort, insertion sort, selection sort. Understanding stable vs unstable sorts, in-place operations, comparison-based sorting, and computational complexity",
-        "regex pattern, regular expression matching, groups, capturing, backslash escapes, metacharacters, wildcards, quantifiers, character classes, lookaheads, lookbehinds, alternation, anchors, word boundary, multiline flag, global search",
-        "software testing, unit test, assertion, mock, stub, fixture, test suite, test case, verification, automated QA, validation framework, JUnit, pytest, Jest. Integration, end-to-end (E2E), functional, regression, acceptance testing",
-        "cloud computing platforms, infrastructure as a service (IaaS), PaaS, AWS, Azure, GCP, compute instance, region, availability zone, elasticity, distributed system, virtual machine, container, serverless, Lambda, edge computing, CDN",
-        "markdown syntax for text formatting, horizontal rule, separator using dashes, headings, fenced code block with triple backticks, inline code, emphasis with bold and italic, strikethrough, blockquote, nested list, task list, markdown table",
-        "code formatting and style, indentation with whitespace, tabs vs spaces, nested function body, class method, structured code, syntax highlighting for languages like Python, JavaScript, Java, C++, Go, Rust, TypeScript, Prettier, ESLint",
+        "Algorithm analysis, time complexity like O(log n), space complexity, data structures including hash tables, arrays, linked lists, queues, stacks, heaps, graphs, or search algorithms.",
+        "Sorting algorithms like merge sort, quicksort, insertion sort, selection sort, understanding stable versus unstable sorts, in-place operations, or computational complexity analysis.",
+        "Regex patterns, regular expression matching, capturing groups, metacharacters, wildcards, quantifiers, character classes, lookaheads, lookbehinds, anchors, or word boundaries.",
+        "Software testing, unit tests, assertions, mocks, stubs, fixtures, test suites, test cases, automated QA, testing frameworks like JUnit, pytest, Jest, or end-to-end testing.",
+        "Cloud computing platforms like AWS, Azure, GCP, infrastructure as a service, compute instances, regions, availability zones, virtual machines, serverless functions, or CDN services.",
+        "Markdown syntax for text formatting, headings, code blocks, inline code, emphasis with bold and italic, blockquotes, lists, task lists, tables, or horizontal rules and separators.",
+        "Code formatting and style, indentation, tabs versus spaces, syntax highlighting for Python, JavaScript, Java, C++, Go, Rust, TypeScript, or linting tools like Prettier and ESLint.",
         # --- Instructional: Formatting & Rewriting ---
-        "format the output as structured data. Return the answer as JSON with specific keys and values, or as YAML. Organize information into a CSV file or a database-style table with columns and rows. Present as a list of objects or an array.",
-        "style the text presentation. Use markdown formatting like bullet points, a numbered list, or a task list. Organize content into a grid or tabular layout with proper alignment. Create a hierarchical structure with nested elements for clarity.",
-        "adjust the response length. Make the answer shorter, more concise, brief, or condensed. Summarize the key points. Trim down the text to reduce the overall word count or meet a specific character limit. Be less verbose and more direct.",
-        "change the explanation depth. Make the response more detailed, comprehensive, and elaborate. Expand on previous points and go into more depth. Provide a thorough, in-depth analysis. Explain the topic with more complexity and nuance.",
-        "rewrite the previous response. Rephrase, paraphrase, or reformulate the answer using different wording. Restate the information in another way to offer an alternative perspective. Express the same meaning but with a new structure or vocabulary.",
-        "alter the response tone. Change the writing style to be more formal, academic, or professional. Alternatively, make it more casual, friendly, and conversational. Adapt the register and voice to suit a specific audience or context level.",
-        "explain the concept in simpler terms. Break down the topic step-by-step for a beginner. Clarify a confusing point. Explain it like I'm five years old (ELI5). Use an analogy or a concrete example to help me understand the idea clearly.",
-        "continue the generated response. Keep going with the explanation or list. Provide more information and finish your thought. Complete the rest of the content or story. Proceed with the next steps. Do not stop until you have concluded.",
-        "act as a specific persona or role. Respond as if you were a pirate, a scientist, or a travel guide. Adopt the character's voice, style, and knowledge base in your answer. Maintain the persona throughout the entire response.",
-        "compare and contrast two or more topics. Explain the similarities and differences between A and B. Provide a detailed analysis of what they have in common and how they diverge. Create a table to highlight the key distinctions.",
+        "Formatting output as structured data, returning answers as JSON with specific keys, YAML, CSV, database-style tables with columns and rows, or lists of objects and arrays.",
+        "Styling text presentation with markdown formatting like bullet points, numbered lists, task lists, tabular layouts with alignment, or hierarchical structures with nested elements.",
+        "Adjusting response length to be shorter, more concise, brief, or condensed, summarizing key points, trimming text to reduce word count, or meeting specific character limits.",
+        "Changing explanation depth to be more detailed, comprehensive, elaborate, thorough, or in-depth, expanding on points, or explaining topics with more complexity and nuance.",
+        "Rewriting previous responses by rephrasing, paraphrasing, or reformulating with different wording, restating information in another way, or expressing meaning with new structure.",
+        "Altering response tone to be more formal, academic, professional, casual, friendly, or conversational, adapting register and voice to suit a specific audience or context.",
+        "Explaining concepts in simpler terms, breaking down topics step-by-step for beginners, clarifying confusing points, using analogies, or providing concrete examples for clarity.",
+        "Continuing generated responses, keeping going with explanations or lists, providing more information, finishing thoughts, completing content, or proceeding with next steps.",
+        "Acting as a specific persona or role like a pirate, scientist, or travel guide, adopting a character's voice, style, and knowledge base, or maintaining a persona throughout.",
+        "Comparing and contrasting two or more topics, explaining similarities and differences between options, providing detailed analysis, or creating tables to highlight distinctions.",
         # --- Instructional: Math & Calculation ---
-        "perform a pure arithmetic calculation with explicit numbers. Solve, multiply, add, subtract, and divide. Compute a numeric expression following the order of operations (PEMDAS/BODMAS). What is 23 plus 456 minus 78 times 9 divided by 3?",
-        "evaluate a mathematical expression containing numbers and operators, such as 2 plus 3 times 4 divided by 5. Solve this numerical problem and compute the final result. Simplify the arithmetic and show the final answer. Calculate 123 * 456.",
-        "convert units between measurement systems with numeric values. Convert 100 kilometers to miles, 72 fahrenheit to celsius, or 5 feet 9 inches to centimeters. Change between metric and imperial for distance, weight, volume, or temperature.",
-        "calculate a percentage of a number. What is 25 percent of 800? Determine the price after a 30% discount. Compute a 15% tip on a $65.40 bill. Find the value corresponding to a specific proportion or calculate sales tax or interest.",
-        "solve an algebraic equation for a variable like x. For the equation 2x + 5 = 15, find the value of x. Use the quadratic formula for numeric values. Solve simultaneous linear equations to find the value of the unknown variables. Isolate x.",
-        "perform a geometry calculation with numeric measurements. Find the area of a circle with a radius of 5, or the volume of a cube with a side of 10. Calculate the circumference, perimeter, or diameter. What is the square root of 144?",
-        "calculate compound interest on an investment or savings. With a principal of $5000 at an annual rate of 4% for 10 years, what is the future value? Compute a monthly mortgage payment for a $300,000 loan. Financial calculation, ROI, APR.",
-        "compute descriptive statistics for a dataset of numbers like 12, 15, 18, 20, 22. Calculate the mean, median, mode, average, and standard deviation. Find the variance, range, quartiles, and percentiles for a given sample distribution.",
-        "calculate health and fitness metrics using a numeric formula. Compute the Body Mass Index (BMI) given a weight in pounds or kilograms and height in feet, inches, or meters. Find my basal metabolic rate (BMR) or target heart rate.",
-        "calculate the time difference between two dates. How many days, hours, or minutes are between two points in time? Find the duration or elapsed time. Act as an age calculator for a birthday or find the time until a future anniversary.",
+        "Performing arithmetic calculations with explicit numbers, solving expressions with multiply, add, subtract, divide, or computing numeric results following order of operations.",
+        "Evaluating mathematical expressions containing numbers and operators, solving numerical problems, computing final results, simplifying arithmetic, or showing calculation steps.",
+        "Converting units between measurement systems with numeric values like kilometers to miles, fahrenheit to celsius, or feet to centimeters for distance, weight, volume, or temperature.",
+        "Calculating percentages of numbers, determining prices after discounts, computing tips on bills, finding proportional values, or calculating sales tax, interest, or ratios.",
+        "Solving algebraic equations for variables like x, using quadratic formulas for numeric values, solving simultaneous linear equations, or isolating unknown variables.",
+        "Performing geometry calculations with numeric measurements like area of circles, volume of cubes, circumference, perimeter, diameter, or computing square roots and powers.",
+        "Calculating compound interest on investments or savings, computing future values, monthly mortgage payments, financial calculations, ROI, APR, or loan amortization schedules.",
+        "Computing descriptive statistics for datasets of numbers like mean, median, mode, average, standard deviation, variance, range, quartiles, or percentiles for distributions.",
+        "Calculating health and fitness metrics using numeric formulas like Body Mass Index from weight and height, basal metabolic rate, target heart rate, or caloric needs.",
+        "Calculating time differences between two dates, finding how many days, hours, or minutes between points in time, elapsed duration, age from birthdays, or time until events.",
         # --- Instructional: Translation ---
-        "translate the explicitly quoted text 'Hello, how are you?' to a foreign language like Spanish, French, or German. This is a translation instruction that includes the word 'translate' and the source text in quotes for direct conversion.",
-        "how do you say a specific word or phrase in another language? For example, how do you say 'thank you', 'computer', or 'goodbye' in Japanese, Chinese, or Korean? This is a request for a direct translation of a common expression or term.",
-        "convert a block of text or a paragraph from a source language to a target language. Translate the following content to Italian, Arabic, Portuguese, or Russian. This is a language conversion request for a larger piece of text provided.",
-        "provide the translation for the sentence 'Where is the train station?' into a specific foreign language like Turkish, Hindi, or Polish. This is a translation request for a complete sentence, often enclosed in quotes or brackets for clarity.",
-        "what is the translation of the source text 'The quick brown fox jumps over the lazy dog' into a target language? Give me the resulting translated output in German, French, or Dutch. This is a query for the translated equivalent of a text.",
-        "translate the following passage to Spanish. This is an instruction to convert the provided text content into a specified foreign language. The request uses a direct command format, indicating a clear source and a clear target language.",
-        "what is the foreign language word for 'house', 'beautiful', or 'water'? Provide the translation for these common vocabulary words in Italian, Swedish, or another language. This is a request for single-word vocabulary translation.",
-        "how do I say 'I am learning to code' in German? Convert this specific English phrase into its equivalent in another language. This is a request for a practical, conversational phrase translation for personal or professional use.",
-        "translate this informal or slang expression to its colloquial equivalent in Spanish. How would you say 'What's up?' in Japanese in a casual context? This request focuses on capturing the correct tone and nuance of informal language.",
-        "provide the formal and professional translation for 'Please find the attached document for your review' in French. Translate this business email phrase to German, ensuring the terminology and register are appropriate for a corporate context.",
+        "Translating explicitly quoted text to foreign languages like Spanish, French, German, or other target languages, converting source text in quotes for direct language conversion.",
+        "Asking how to say specific words or phrases in another language like thank you, computer, or goodbye in Japanese, Chinese, Korean, or requesting direct translations of terms.",
+        "Converting blocks of text or paragraphs from source to target languages, translating content to Italian, Arabic, Portuguese, Russian, or performing language conversion requests.",
+        "Providing translations for sentences into specific foreign languages like Turkish, Hindi, Polish, translating complete sentences often enclosed in quotes or brackets for clarity.",
+        "Asking for translations of source text into target languages, requesting translated output in German, French, Dutch, or querying for the translated equivalent of provided text.",
+        "Translating passages to specified foreign languages using direct command format, indicating clear source and target languages, or converting provided text content to new languages.",
+        "Asking for foreign language words for common vocabulary like house, beautiful, water, providing single-word translations in Italian, Swedish, or other languages for basic terms.",
+        "Asking how to say specific phrases in other languages, converting English phrases to equivalents in German or other languages for practical conversational or professional use.",
+        "Translating informal or slang expressions to colloquial equivalents in target languages, capturing correct tone and nuance of informal language in casual conversational contexts.",
+        "Providing formal and professional translations for business phrases, translating corporate email content to French or German with appropriate terminology and register for context.",
         # --- Instructional: Proofreading & Editing ---
-        "proofread, review, revise, or edit provided text for errors. Here is my draft, check it for typos and mistakes. Correct grammar, spelling, punctuation. Review emails, essays, documents, reviews, or any submitted content for clarity and flow.",
-        "proofread for coherence, readability, or professionalism. Polish the text to ensure it sounds professional and is free of errors. Check for textual quality, sentence structure, and overall writing effectiveness in submitted drafts or passages.",
-        "correct grammatical issues like subject-verb agreement, incorrect verb tense, pronoun reference errors, misplaced modifiers, or faulty sentence structure. Validate if a sentence is grammatically correct. Check word usage (their/there/they're).",
-        "fix passive voice, run-on sentences, comma splices, or sentence fragments. Address punctuation errors with apostrophes, quotation marks, periods, semicolons, dashes. Ensure proper capitalization and resolve structural writing problems.",
-        "improve writing quality: suggest better word choice, alternative phrasing, synonyms, or refined expression. Enhance vocabulary and diction. Make writing more direct, concise, engaging, smooth, or readable. Restructure sentences for coherence.",
-        "remove wordiness, filler words, or redundancy from text. Improve logical progression of ideas. Eliminate awkward phrasing. Make the writing flow better and ensure ideas connect seamlessly for better overall quality and readability.",
-        "rewrite, rephrase, paraphrase, or reformulate text using different wording. Restate information in another way. Express the same meaning but with new structure or vocabulary. Adapt tone to be more formal, academic, or professional.",
-        "adapt writing tone to be more casual, friendly, or conversational. Change the register and voice to suit a specific audience or context level. Adjust the writing style while maintaining the core message and information presented in the original text.",
+        "Proofreading, reviewing, revising, or editing provided text for errors, checking drafts for typos and mistakes, correcting grammar, spelling, punctuation, or improving clarity.",
+        "Proofreading for coherence, readability, or professionalism, polishing text to sound professional and error-free, checking textual quality, sentence structure, or effectiveness.",
+        "Correcting grammatical issues like subject-verb agreement, verb tense, pronoun reference errors, misplaced modifiers, faulty sentence structure, or validating grammar correctness.",
+        "Fixing passive voice, run-on sentences, comma splices, or sentence fragments, addressing punctuation errors with apostrophes, quotation marks, semicolons, or capitalization.",
+        "Improving writing quality by suggesting better word choice, alternative phrasing, synonyms, refined expression, enhanced vocabulary, or restructured sentences for coherence.",
+        "Removing wordiness, filler words, or redundancy from text, improving logical progression of ideas, eliminating awkward phrasing, or making writing flow better and connect ideas.",
+        "Rewriting, rephrasing, paraphrasing, or reformulating text using different wording, restating information in another way, or expressing same meaning with new structure.",
+        "Adapting writing tone to be more casual, friendly, or conversational, changing register and voice to suit specific audiences, or adjusting style while maintaining core message.",
         # --- Transient States & Momentary Situations ---
-        "describing current temporary emotional states, fleeting feelings, or momentary moods without lasting significance. 'I'm feeling stressed this week', 'I'm tired today', 'I'm excited right now', 'I'm frustrated at the moment', 'I'm happy'.",
-        "temporary emotions or passing states that are not enduring personal facts. 'I'm angry about this situation', 'I'm nervous about tomorrow', 'I feel great today', 'I'm worried right now'. These are transient feelings, not biographical information.",
-        "mentioning one-time events, temporary situations, or transient circumstances without lasting impact. 'I have a presentation on Friday', 'I'm at the store', 'I'm working late tonight', 'I ate pizza for lunch', 'It's raining here today'.",
-        "describing momentary situations, current locations, or immediate activities. 'I'm in a meeting', 'I'm driving to work', 'I'm cooking dinner', 'I'm watching a movie'. These are temporary circumstances, not biographical or lasting personal facts.",
+        "Describing current temporary emotional states, fleeting feelings, or momentary moods without lasting significance like feeling stressed, tired, excited, frustrated, or happy today.",
+        "Temporary emotions or passing states that are not enduring personal facts like being angry about a situation, nervous about tomorrow, or worried right now as transient feelings.",
+        "Mentioning one-time events, temporary situations, or transient circumstances without lasting impact like having a presentation Friday, being at the store, or working late tonight.",
+        "Describing momentary situations, current locations, or immediate activities like being in a meeting, driving to work, cooking dinner, or watching a movie as temporary circumstances.",
     ]
 
     PERSONAL_CATEGORY_DESCRIPTIONS = [
-        "**Identity Core:** Directly stating facts about my name, birthdate, age, nationality, ethnicity, personality traits, core beliefs, values, religion, cultural background, education history, academic degrees, or formative personal experiences.",
-        "**Medical History:** Directly stating facts about my medical diagnoses, chronic conditions, past surgeries or medical procedures, medications I currently take or have taken in the past, supplements I use, vision or hearing conditions, allergies.",
-        "**Physical Health:** Directly stating facts about my dietary restrictions, physical measurements like height and weight, fitness routines, sleep patterns, physical appearance, mental health conditions, ongoing symptoms, or wellness practices I follow.",
-        "**Family & Relationships:** Directly stating facts about my family members including their names, ages, relationships to me, occupations, or health conditions. Information about my spouse, partner, children, friends, or romantic relationship status.",
-        "**Social & Pets:** Directly stating facts about my pets including their names and breeds, social activities I participate in, community involvement, or details about the people in my life and how I interact with my social circle and broader community.",
-        "**Job & Workplace:** Directly stating facts about my current or past job titles, employer names, workplace, industry, career transitions, professional certifications, technical skills I possess, colleagues, or work arrangements like remote or hybrid.",
-        "**Professional Growth:** Directly stating facts about professional development activities I'm engaged in or completed, training programs, career milestones, work history, or any facts related to my professional life, expertise, and career trajectory.",
-        "**Finance & Legal:** Directly stating facts about my financial situation, income level, budgeting constraints, investments I hold, savings goals, debts I have, tax situations, legal matters I'm involved in, or financial obligations and commitments.",
-        "**Home & Location:** Directly stating facts about my residence type, living arrangements, roommates, neighborhood, city, country, relocations I've made, commute details, vehicles I own or drive with make/model/year, or transportation methods I use.",
-        "**Hobbies & Activities:** Directly stating facts about my hobbies, recreational activities, creative projects I work on, sports I play or follow, specific media preferences like favorite movies, books, music genres, games, or personal collections.",
-        "**Leisure & Entertainment:** Directly stating facts about pastimes I regularly engage in, entertainment preferences, artistic pursuits, leisure activities, or any facts about how I spend my free time and what I enjoy doing for relaxation or fulfillment.",
-        "**Future Plans:** Directly stating facts about my scheduled future plans, confirmed appointments, upcoming events I'm attending, booked travel itineraries, stated long-term personal goals, career aspirations, or life milestones I'm working toward.",
-        "**Life Events:** Directly stating facts about my past life events, significant personal milestones like graduations, marriages, or births, historical medical events, previous jobs or living situations, travel history, or memorable experiences.",
-        "**Personal History:** Directly stating facts about memorable personal experiences with temporal context, past achievements, formative moments, historical facts about my life journey, or biographical information about my past that shaped who I am.",
-        "**Emotional Landscape:** Directly stating my current emotional state toward lasting situations, not momentary feelings. My attitudes toward specific people or relationships, deep-seated preferences, strong aversions or dislikes, or motivations.",
-        "**Inner Life:** Directly stating facts about sources of stress or joy in my life, ongoing emotional experiences, persistent feelings about important matters, or enduring attitudes and perspectives that reflect my emotional landscape and inner life.",
-        "**Possessions & Brands:** Directly stating facts about specific items I own like devices, appliances, or vehicles with details. Products I regularly use or consume, brands I prefer, subscriptions I have, or material possessions with identifying details.",
+        "Statements regarding my name, birthdate, age, nationality, ethnicity, personality, beliefs, values, religion, culture, education history, degrees, or formative personal experiences.",
+        "Details about my medical diagnoses, conditions, surgeries, medications, allergies, diets, physical measurements, fitness routines, sleep patterns, mental health, or wellness practices.",
+        "Information about my family members, names, ages, relationships, occupations, health, or details about my spouse, partner, children, friends, or romantic relationship status.",
+        "Facts about my pets, names and breeds, social activities, community involvement, or details about people in my life and interactions with my social circle and broader community.",
+        "Facts about my job titles, employers, workplace, industry, career transitions, certifications, skills, colleagues, work arrangements, professional development, or career milestones.",
+        "Details regarding my financial situation, income level, budget, investments, savings goals, debts, tax situations, legal matters, or financial obligations and commitments.",
+        "Facts about my residence type, living arrangements, roommates, neighborhood, city, country, relocations, commute details, vehicles I own, or transportation methods I use.",
+        "Details about my hobbies, recreation, creative projects, sports, media preferences like movies, books, music, games, entertainment choices, artistic pursuits, or collections.",
+        "Statements about my scheduled future plans, appointments, upcoming events, booked travel, long-term personal goals, career aspirations, or life milestones I'm working toward.",
+        "Facts about my past life events, milestones like graduations, marriages, or births, memorable experiences, achievements, formative moments, travel history, or biographical info.",
+        "Descriptions of my enduring emotional states, attitudes toward people, deep-seated preferences, aversions, motivations, sources of stress or joy, or persistent feelings.",
+        "Facts about specific items I own like devices, appliances, or vehicles, products I use, brands I prefer, subscriptions I have, or material possessions with identifying details.",
     ]
 
     class SkipReason(Enum):
