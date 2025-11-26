@@ -469,7 +469,7 @@ class SkipDetector:
         }
 
         logger.info(
-            f"SkipDetector initialized with {len(self.NON_PERSONAL_CATEGORY_DESCRIPTIONS)} non-personal categories and {len(self.PERSONAL_CATEGORY_DESCRIPTIONS)} personal categories"
+            f"✅ SkipDetector initialized with {len(self.NON_PERSONAL_CATEGORY_DESCRIPTIONS)} non-personal and {len(self.PERSONAL_CATEGORY_DESCRIPTIONS)} personal categories"
         )
 
     def validate_message_size(self, message: str, max_message_chars: int) -> Optional[str]:
@@ -650,6 +650,7 @@ class LLMRerankingService:
         self.memory_system = memory_system
 
     def _should_use_llm_reranking(self, memories: List[Dict]) -> Tuple[bool, str]:
+        """Determine if LLM reranking should be used based on candidate count."""
         if self.memory_system.valves.llm_reranking_trigger_multiplier <= 0:
             return False, "LLM reranking disabled"
 
@@ -670,7 +671,6 @@ class LLMRerankingService:
         user_message: str,
         candidate_memories: List[Dict],
         max_count: int,
-        emitter: Optional[Callable] = None,
     ) -> List[Dict]:
         """Use LLM to select most relevant memories."""
         memory_lines = self.memory_system._format_memories_for_llm(candidate_memories)
@@ -709,6 +709,7 @@ CANDIDATE MEMORIES:
         candidate_memories: List[Dict],
         emitter: Optional[Callable] = None,
     ) -> Tuple[List[Dict], Dict[str, Any]]:
+        """Rerank candidate memories using LLM or return top semantic matches."""
         start_time = time.time()
         max_injection = self.memory_system.valves.max_memories_returned
 
@@ -731,7 +732,7 @@ CANDIDATE MEMORIES:
             )
             logger.info(f"🧠 Using LLM reranking: {decision_reason}")
 
-            selected_memories = await self._llm_select_memories(user_message, llm_candidates, max_injection, emitter)
+            selected_memories = await self._llm_select_memories(user_message, llm_candidates, max_injection)
 
             if not selected_memories:
                 logger.info("📭 No relevant memories after LLM analysis")
@@ -1290,10 +1291,10 @@ class Filter:
         embedding = np.squeeze(embedding)
 
         if embedding.ndim != 1:
-            raise ValueError(f"Embedding must be 1D after squeeze, got shape {embedding.shape}")
+            raise ValueError(f"📐 Embedding must be 1D after squeeze, got shape {embedding.shape}")
 
         if self._embedding_dimension and embedding.shape[0] != self._embedding_dimension:
-            raise ValueError(f"Embedding must have {self._embedding_dimension} dimensions, got {embedding.shape[0]}")
+            raise ValueError(f"📐 Embedding dimension mismatch: expected {self._embedding_dimension}, got {embedding.shape[0]}")
 
         norm = np.linalg.norm(embedding)
         return embedding / norm if norm > 0 else embedding
@@ -1391,9 +1392,10 @@ class Filter:
         suffix = "..." if len(scores) > max_scores_to_show else ""
 
         logger.info(f"{context_label}: {len(memories)} memories | Top: {top_score:.3f} | Median: {median_score:.3f} | Lowest: {lowest_score:.3f}")
-        logger.info(f"Scores: [{scores_str}{suffix}]")
+        logger.info(f"📈 Scores: [{scores_str}{suffix}]")
 
     def _build_operation_details(self, created_count: int, updated_count: int, deleted_count: int) -> List[str]:
+        """Build formatted operation detail strings for status messages."""
         operations = [
             (created_count, "📝 Created"),
             (updated_count, "✏️ Updated"),
@@ -1409,6 +1411,7 @@ class Filter:
         return f"{cache_type}_{user_id}"
 
     def format_current_datetime(self) -> str:
+        """Return current UTC datetime in human-readable format."""
         return datetime.now(timezone.utc).strftime("%A %B %d %Y at %H:%M:%S UTC")
 
     def _format_memories_for_llm(self, memories: List[Dict[str, Any]]) -> List[str]:
@@ -1426,7 +1429,7 @@ class Filter:
                     formatted_date = parsed_date.strftime("%b %d %Y")
                     line += f" [noted at {formatted_date}]"
                 except Exception as e:
-                    logger.warning(f"Failed to format date {record_date}: {str(e)}")
+                    logger.warning(f"📅 Failed to format date {record_date}: {str(e)}")
                     line += f" [noted at {record_date}]"
             memory_lines.append(line)
         return memory_lines
