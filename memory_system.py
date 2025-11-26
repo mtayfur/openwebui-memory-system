@@ -36,8 +36,9 @@ class Constants:
 
     # Core System Limits
     MAX_MEMORY_CONTENT_CHARS = 500  # Character limit for LLM prompt memory content
+    MAX_MEMORY_SENTENCES = 3  # Sentence limit per memory for clarity
     MAX_MEMORIES_PER_RETRIEVAL = 10  # Maximum memories returned per query
-    MAX_MESSAGE_CHARS = 2500  # Maximum message length for validation
+    MAX_MESSAGE_CHARS = 3000  # Maximum message length for validation
     MIN_MESSAGE_CHARS = 10  # Minimum message length for validation
     DATABASE_OPERATION_TIMEOUT_SEC = 10  # Timeout for DB operations like user lookup
     LLM_CONSOLIDATION_TIMEOUT_SEC = 60.0  # Timeout for LLM consolidation operations
@@ -77,7 +78,7 @@ class Prompts:
 Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
 
 ## AVAILABLE OPERATIONS
-- CREATE: For new, personal facts. Must be semantically and temporally enhanced.
+- CREATE: For new, personal facts. Include temporal context when available.
 - UPDATE: To modify existing memories, including making facts historical with a date range.
 - DELETE: For explicit user requests or to resolve contradictions.
 - SKIP: When no new, personal information is provided.
@@ -93,20 +94,19 @@ Your goal is to build precise memories of the user's personal narrative with fac
     - Capture Dates: Record temporal information when explicitly stated or clearly derivable. Convert relative references (last month, yesterday) to specific dates.
     - Preserve History: Transform superseded facts into past-tense statements with defined time boundaries.
     - Avoid Assumptions: Do not assign current dates to ongoing states, habits, or conditions lacking explicit temporal context.
-- Build Rich Entities:
-    - Fuse Identifiers: Combine nouns/pronouns with specific names into a single entity.
-    - Capture Relationships: Always store relationships in first-person format with complete relationship context. Never store incomplete relationships, always specify with whom.
-    - Retroactive Enrichment: If a name is provided for prior entity, UPDATE only if substantially valuable.
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Mandatory Semantic Enhancement: Enhance entities with descriptive categorical nouns for better retrieval.
-    - Verify Nouns/Pronouns: Link pronouns (he, she, they) and nouns to specific entities.
+    - Conciseness: Limit each memory to {Constants.MAX_MEMORY_SENTENCES} sentences and {Constants.MAX_MEMORY_CONTENT_CHARS} characters. If a new or existing memory exceeds these limits, decompose it into smaller, self-contained facts.
+    - Entity Resolution: Link pronouns (he, she, they) and generic nouns to their specific named entities before storing.
+    - Capture Relationships: Store relationships with complete context. Never store incomplete relationships—always specify with whom.
+    - Retroactive Enrichment: UPDATE existing memories only when adding a name or correcting a significant fact.
     - First-Person Format: Write all memories in English from the user's perspective.
 
 ## DECISION FRAMEWORK
-- Selectivity: Verify the user's *primary intent* is to state a direct, personally significant fact with lasting importance. If the intent is instructional, analytical, or a general question, SKIP. Never create duplicate memories. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE operations.
-- Strategy: Strongly prioritize enriching existing memories over creating new ones. Analyze the message holistically to identify naturally connected facts (same person, event, or timeframe) and combine them into a unified, cohesive memory rather than fragmenting them. Each memory must be self-contained and **never** merge unrelated information.
-- Execution: For new significant facts, use CREATE. For simple attribute changes, use UPDATE only if it meaningfully improves the memory. For significant changes, use UPDATE to make the old memory historical, then CREATE the new one. For contradictions, use DELETE.
+- Selectivity: Verify the user's *primary intent* is to state a personally significant fact. If intent is instructional, analytical, or a question, SKIP.
+- Conservatism: Never create duplicates. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE.
+- Strategy: Prioritize enriching existing memories over creating new ones. Combine naturally connected facts (same person, event, or timeframe) into one cohesive memory, respecting length limits. Each memory must be self-contained—never merge unrelated information.
+- Execution: For new facts, use CREATE. For attribute changes, use UPDATE only if it meaningfully improves the memory. For superseded facts, UPDATE to historical then CREATE the new one. For contradictions, DELETE.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
 
@@ -114,7 +114,7 @@ Your goal is to build precise memories of the user's personal narrative with fac
 Message: "My wife Sarah loves hiking and outdoor activities. She has an active lifestyle and enjoys rock climbing. I started this new hobby last month and it's been great."
 Memories: []
 Return: {{"ops": [{{"operation": "CREATE", "id": "", "content": "My wife Sarah has an active lifestyle and enjoys hiking, outdoor activities, and rock climbing"}}, {{"operation": "CREATE", "id": "", "content": "I started rock climbing in August 2025 as a new hobby and have been enjoying it"}}]}}
-Explanation: Multiple facts about the same person (Sarah's active lifestyle, love for hiking, outdoor activities, and rock climbing) are combined into a single cohesive memory. The user's separate rock climbing hobby is kept as a distinct memory since it's about a different person.
+Explanation: Multiple facts about Sarah (lifestyle, hiking, outdoor activities, rock climbing) are combined into one memory. The user's own rock climbing hobby is kept separate since it's about the user, not Sarah.
 
 ### Example 2
 Message: "My daughter Emma just turned 12. We adopted a dog named Max for her 11th birthday. What should I give her for her 12th birthday?"
@@ -123,7 +123,7 @@ Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-002", "content": "My daugh
 Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024). The instructional question ("What should I give her...?") is ignored as per the 'Filter for Intent' rule.
 
 ### Example 3
-Message: "Can you recommend some good tapas restaurants in Barcelona? I moved here from Madrid last month."
+Message: "¿Me puedes recomendar buenos restaurantes de tapas en Barcelona? Me mudé aquí desde Madrid el mes pasado."
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved from Madrid to Barcelona Spain in August 2025"}}]}}
 Explanation: Relocation is a significant life event. The CREATE includes origin city for complete context. The request for recommendations is instructional and is ignored.
@@ -135,12 +135,6 @@ Return: {{"ops": [{{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"
 Explanation: Marriage is an enduring life event. The instructional question ("What are some good honeymoon destinations?") is ignored.
 
 ### Example 5
-Message: "¡Hola! Me mudé de Madrid a Barcelona el mes pasado y me casé con mi novia Sofía en agosto. ¿Me puedes recomendar un buen restaurante para celebrar?"
-Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025] [id:mem-006] I am dating Sofia [noted at February 10 2025] [id:mem-008] I am single [noted at January 5 2025]
-Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "UPDATE", "id": "mem-006", "content": "I moved to Barcelona Spain and married my girlfriend Sofia in August 2025, who is now my wife"}}]}}
-Explanation: The user's move and marriage are significant, related life events. They are consolidated into a single memory. The request for a recommendation is ignored.
-
-### Example 6
 Message: "Fix this Python function that calculates my age from my birthdate of March 15, 1990."
 Memories: []
 Return: {{"ops": []}}
@@ -154,8 +148,8 @@ Your goal is to analyze the user's message and select the most relevant memories
 
 ## RELEVANCE CATEGORIES
 - Direct: Memories explicitly about the query topic, people, or domain.
-- Contextual: Personal info that affects response recommendations or understanding.
-- Background: Situational context that provides useful personalization.
+- Contextual: Personal info that shapes recommendations (preferences, constraints, circumstances).
+- Background: General facts that add minor personalization. Exclude if unrelated to the query.
 
 ## SELECTION FRAMEWORK
 - Prioritize Current Info: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
@@ -173,7 +167,7 @@ Explanation: Career transition history (marketing → software engineering) dire
 
 ### Example 2
 Message: "Necesito ideas para una cena saludable y con muchas verduras esta noche."
-Memories: [id:mem-030] I am trying a vegetarian diet [noted at September 20 2025] [id:mem-031] My favorite cuisine is Italian [noted at August 15 2025] [id:mem-032] I dislike spicy food [noted at August 5 2025]
+Memories: [id:mem-030] I am trying a vegetarian diet [noted at September 1 2025] [id:mem-031] My favorite cuisine is Italian [noted at August 15 2025] [id:mem-032] I dislike spicy food [noted at August 5 2025]
 Return: {{"ids": ["mem-030", "mem-031", "mem-032"]}}
 Explanation: Vegetarian diet is directly relevant to healthy vegetable-focused dinner. Italian cuisine and spice preference provide contextual personalization for recipe recommendations.
 
@@ -417,11 +411,26 @@ class SkipDetector:
         "Removing wordiness, filler words, or redundancy from text, improving logical progression of ideas, eliminating awkward phrasing, or making writing flow better and connect ideas.",
         "Rewriting, rephrasing, paraphrasing, or reformulating text using different wording, restating information in another way, or expressing same meaning with new structure.",
         "Adapting writing tone to be more casual, friendly, or conversational, changing register and voice to suit specific audiences, or adjusting style while maintaining core message.",
+        # --- Requests involving personal items (formatting/organizing) ---
+        "Requests to format, organize, or structure personal information like my resume, my schedule, my task list, my grocery list, my travel itinerary, my budget, or my to-do items.",
+        "Asking to create tables, lists, or schedules for personal data like format my hobbies as a list, organize my appointments, structure my plans, or present my information as bullet points.",
+        "Format requests where personal items are listed as content to be formatted, like my favorite hobbies are reading and hiking format this as a list, or my skills include Python and SQL make a table.",
+        "Requests to format lists of favorite things as bullet points or numbered items, like can you format my hobbies as a list, or put my interests into a table, structuring personal preferences.",
+        "Help me write, draft, or compose personal communications like emails to my boss, messages to my landlord, notes for my family, or texts to my friends without memorizing the content.",
+        "Requests to analyze, calculate, or compute values related to my personal situation like my savings rate, my commute distance, my BMI, my age, or my expenses without storing facts.",
+        "Story problems or word problems with personal context like my commute is X miles, I ran X miles, splitting costs with friends, calculating how much I owe, or figuring personal totals.",
+        "Requests to proofread, review, or edit personal documents like my email to my boss, my cover letter, my message to my landlord, or my text to a friend for grammar or clarity.",
+        "Asking for help with personal decisions or recommendations involving personal context where the request for help is the focus, not stating biographical facts for memory.",
         # --- Transient States & Momentary Situations ---
         "Describing current temporary emotional states, fleeting feelings, or momentary moods without lasting significance like feeling stressed, tired, excited, frustrated, or happy today.",
         "Temporary emotions or passing states that are not enduring personal facts like being angry about a situation, nervous about tomorrow, or worried right now as transient feelings.",
         "Mentioning one-time events, temporary situations, or transient circumstances without lasting impact like having a presentation Friday, being at the store, or working late tonight.",
         "Describing momentary situations, current locations, or immediate activities like being in a meeting, driving to work, cooking dinner, or watching a movie as temporary circumstances.",
+        # --- Instructional requests with personal context ---
+        "Requests to use analogies, metaphors, or storytelling techniques to explain topics, like explain using an analogy, use metaphors to make it relatable, or add storytelling elements.",
+        "Requests to simplify explanations for specific audiences like explain like I'm 5 years old, explain for someone without technical background, or make it simple for a beginner.",
+        "Math questions mentioning family members as context like I'm arguing with my brother what's X, helping my son with homework, or questions involving people I know.",
+        "Translating idioms, proverbs, or figurative expressions between languages like how do you say break a leg in French, what's the equivalent of early bird catches the worm.",
     ]
 
     PERSONAL_CATEGORY_DESCRIPTIONS = [
@@ -432,11 +441,12 @@ class SkipDetector:
         "Facts about my job titles, employers, workplace, industry, career transitions, certifications, skills, colleagues, work arrangements, professional development, or career milestones.",
         "Details regarding my financial situation, income level, budget, investments, savings goals, debts, tax situations, legal matters, or financial obligations and commitments.",
         "Facts about my residence type, living arrangements, roommates, neighborhood, city, country, relocations, commute details, vehicles I own, or transportation methods I use.",
-        "Details about my hobbies, recreation, creative projects, sports, media preferences like movies, books, music, games, entertainment choices, artistic pursuits, or collections.",
-        "Statements about my scheduled future plans, appointments, upcoming events, booked travel, long-term personal goals, career aspirations, or life milestones I'm working toward.",
         "Facts about my past life events, milestones like graduations, marriages, or births, memorable experiences, achievements, formative moments, travel history, or biographical info.",
         "Descriptions of my enduring emotional states, attitudes toward people, deep-seated preferences, aversions, motivations, sources of stress or joy, or persistent feelings.",
-        "Facts about specific items I own like devices, appliances, or vehicles, products I use, brands I prefer, subscriptions I have, or material possessions with identifying details.",
+        "Personal narratives about trying to improve myself like I'm trying to save money, I'm working on quitting smoking, I'm learning a new language, or ongoing self-development efforts.",
+        "Details about my hobbies, recreation, creative pursuits, sports I play or watch, media preferences like favorite movies, books, music, games, or entertainment I enjoy.",
+        "Stating that my life, my relationship, my work, or my emotional state feels like something abstract, such as my life feels like chaos, my relationship feels broken, my day was like a disaster.",
+        "Asking to recall or remember personal biographical facts I shared earlier, like what's my wife's name, where did I say I work, remind me what I said about my hobbies or family.",
     ]
 
     class SkipReason(Enum):
