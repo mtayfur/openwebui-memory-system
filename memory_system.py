@@ -79,10 +79,10 @@ class Prompts:
 Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
 
 ## AVAILABLE OPERATIONS
-- CREATE: For new, personal facts. Include temporal context when available.
-- UPDATE: To modify existing memories, including making facts historical with a date range.
-- DELETE: For explicit user requests or to resolve contradictions.
-- SKIP: When no new, personal information is provided.
+- CREATE: For new significant facts with lasting relevance to user's life and identity. Include dates when stated. Resolve pronouns to named entities.
+- UPDATE: To add names, enrich with meaningful context, correct significant facts, or convert to historical with end date and past-tense. Never for rephrasing.
+- DELETE: For explicit revocations or direct contradictions.
+- SKIP: When primary intent is instructional, analytical, or questioning—not stating personal narrative. Also skip transient details or casual mentions.
 
 ## PROCESSING GUIDELINES
 - Personal Facts Only: Store only significant facts with lasting relevance to the user's life and identity. Exclude transient situations, questions, general knowledge, casual mentions, or momentary states.
@@ -100,14 +100,12 @@ Your goal is to build precise memories of the user's personal narrative with fac
     - Conciseness: Limit each memory to {Constants.MAX_MEMORY_SENTENCES} sentences and {Constants.MAX_MEMORY_CONTENT_CHARS} characters. If a new or existing memory exceeds these limits, decompose it into smaller, self-contained facts.
     - Entity Resolution: Link pronouns (he, she, they) and generic nouns to their specific named entities before storing. When a CONVERSATION is provided, use it to resolve ambiguous references (e.g., "the project", "that place") and provide missing context.
     - Capture Relationships: Store relationships with complete context. Never store incomplete relationships—always specify with whom.
-    - Retroactive Enrichment: UPDATE existing memories only when adding a name or correcting a significant fact.
     - First-Person Format: Write all memories in English from the user's perspective.
 
 ## DECISION FRAMEWORK
 - Selectivity: Verify the user's *primary intent* is to state a personally significant fact. If intent is instructional, analytical, or a question, SKIP.
 - Conservatism: Never create duplicates. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE.
 - Strategy: Prioritize enriching existing memories over creating new ones. Combine naturally connected facts (same person, event, or timeframe) into one cohesive memory, respecting length limits. Each memory must be self-contained—never merge unrelated information.
-- Execution: For new facts, use CREATE. For attribute changes, use UPDATE only if it meaningfully improves the memory. For superseded facts, UPDATE to historical then CREATE the new one. For contradictions, DELETE.
 
 ## EXAMPLES (Assumes Current Date: September 15, 2025)
 
