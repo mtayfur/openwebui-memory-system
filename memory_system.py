@@ -82,15 +82,15 @@ Your goal is to build precise memories of the user's personal narrative with fac
 - CREATE: For new significant facts with lasting relevance to user's life and identity. Include dates when stated. Resolve pronouns to named entities.
 - UPDATE: To add names, enrich with meaningful context, correct significant facts, or convert to historical with end date and past-tense. Never for rephrasing.
 - DELETE: For explicit revocations or direct contradictions.
-- SKIP: When primary intent is instructional, analytical, or questioning—not stating personal narrative. Also skip transient details or casual mentions.
+- SKIP: Return {{"ops": []}} when no memory operations are appropriate.
 
 ## PROCESSING GUIDELINES
+- **Filter for Intent:** You MUST SKIP if the user's primary intent is instructional, technical, or analytical, even if personal details are mentioned. This includes:
+    - Rewrite, revise, translate, or proofread requests.
+    - General knowledge, math, or technical questions.
+    - Concept explanations, calculations, or persona roleplay.
+  **Only store facts when the user is *directly stating* them as part of a personal narrative, not providing them as task input.**
 - Personal Facts Only: Store only significant facts with lasting relevance to the user's life and identity. Exclude transient situations, questions, general knowledge, casual mentions, or momentary states.
-- **Filter for Intent:** You MUST SKIP if the user's primary intent is instructional, technical, or analytical, even if the message contains personal details. This includes requests to:
-    - Rewrite, revise, translate, or proofread a block of text (e.g., "revise this review for me").
-    - Answer a general knowledge, math, or technical question.
-    - Explain a concept, perform a calculation, or act as a persona.
-  **Only store facts when the user is *directly stating* them as part of a personal narrative, not when providing them as content for a task.**
 - Maintain Temporal Accuracy:
     - Capture Dates: Record temporal information when explicitly stated or clearly derivable. Convert relative references (last month, yesterday) to specific dates.
     - Preserve History: Transform superseded facts into past-tense statements with defined time boundaries.
@@ -98,28 +98,27 @@ Your goal is to build precise memories of the user's personal narrative with fac
 - Ensure Memory Quality:
     - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
     - Conciseness: Limit each memory to {Constants.MAX_MEMORY_SENTENCES} sentences and {Constants.MAX_MEMORY_CONTENT_CHARS} characters. If a new or existing memory exceeds these limits, decompose it into smaller, self-contained facts.
-    - Entity Resolution: Link pronouns (he, she, they) and generic nouns to their specific named entities before storing. When a CONVERSATION is provided, use it to resolve ambiguous references (e.g., "the project", "that place") and provide missing context.
-    - Capture Relationships: Store relationships with complete context. Never store incomplete relationships—always specify with whom.
+    - Entity Resolution: Link pronouns (he, she, they) and generic nouns to their specific named entities before storing. When a CONVERSATION is provided, use it to resolve ambiguous references (e.g., "the project", "that place"). Store relationships with complete context—always specify with whom, never partial connections.
     - First-Person Format: Write all memories in English from the user's perspective.
 
 ## DECISION FRAMEWORK
 - Selectivity: Verify the user's *primary intent* is to state a personally significant fact. If intent is instructional, analytical, or a question, SKIP.
 - Conservatism: Never create duplicates. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE.
-- Strategy: Prioritize enriching existing memories over creating new ones. Combine naturally connected facts (same person, event, or timeframe) into one cohesive memory, respecting length limits. Each memory must be self-contained—never merge unrelated information.
+- Strategy: Prioritize enriching existing memories over creating new ones. Combine naturally connected facts (same person, event, or timeframe) into one cohesive memory when clearly related. Each memory must be self-contained—never merge unrelated information.
 
-## EXAMPLES (Assumes Current Date: September 15, 2025)
+## EXAMPLES (Use CURRENT DATE/TIME provided in the user prompt)
 
 ### Example 1
 Message: "My wife Sarah loves hiking and outdoor activities. She has an active lifestyle and enjoys rock climbing. I started this new hobby last month and it's been great."
 Memories: []
 Return: {{"ops": [{{"operation": "CREATE", "id": "", "content": "My wife Sarah has an active lifestyle and enjoys hiking, outdoor activities, and rock climbing"}}, {{"operation": "CREATE", "id": "", "content": "I started rock climbing in August 2025 as a new hobby and have been enjoying it"}}]}}
-Explanation: Multiple facts about Sarah (lifestyle, hiking, outdoor activities, rock climbing) are combined into one memory. The user's own rock climbing hobby is kept separate since it's about the user, not Sarah.
+Explanation: Sarah's lifestyle, hiking, outdoor activities, and rock climbing are naturally connected facts about the same person and combined into one cohesive memory. The user's rock climbing hobby is kept separate as it's about a different subject (the user vs. Sarah).
 
 ### Example 2
 Message: "My daughter Emma just turned 12. We adopted a dog named Max for her 11th birthday. What should I give her for her 12th birthday?"
 Memories: [id:mem-002] My daughter Emma is 10 years old [noted at March 20 2024] [id:mem-101] I have a golden retriever [noted at September 20 2024]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-002", "content": "My daughter Emma turned 12 years old in September 2025"}}, {{"operation": "UPDATE", "id": "mem-101", "content": "I have a golden retriever named Max that was adopted in September 2024 as a birthday gift for my daughter Emma when she turned 11"}}]}}
-Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024). The instructional question ("What should I give her...?") is ignored as per the 'Filter for Intent' rule.
+Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024).
 
 ### Example 3
 Message: "¿Me puedes recomendar buenos restaurantes de tapas en Barcelona? Me mudé aquí desde Madrid el mes pasado."
@@ -131,7 +130,7 @@ Explanation: Relocation is a significant life event. The CREATE includes origin 
 Message: "My wife Sofia and I just got married in August. What are some good honeymoon destinations?"
 Memories: [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "CREATE", "id": "", "content": "I married Sofia in August 2025 and she is now my wife"}}]}}
-Explanation: Marriage is an enduring life event. The instructional question ("What are some good honeymoon destinations?") is ignored.
+Explanation: Marriage is an enduring life event.
 
 ### Example 5
 Message: "Fix this Python function that calculates my age from my birthdate of March 15, 1990."
@@ -157,15 +156,16 @@ Your goal is to analyze the user's message and select the most relevant memories
 ## RELEVANCE CATEGORIES
 - Direct: Memories explicitly about the query topic, people, or domain.
 - Contextual: Personal info that shapes recommendations (preferences, constraints, circumstances).
-- Background: General facts that add minor personalization. Exclude if unrelated to the query.
+- Supporting: General user facts that provide useful context when connected to the query topic.
 
 ## SELECTION FRAMEWORK
-- Prioritize Current Info: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
-- Hierarchy: Prioritize topic matches first (Direct), then context that enhances the response (Contextual), and finally general background (Background).
+- Temporal Relevance: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
+- Hierarchy: Prioritize topic matches first (Direct), then context that enhances the response (Contextual), and finally general background (Supporting).
 - Ordering: Order IDs by relevance, most relevant first.
 - Maximum Limit: Return up to {Constants.MAX_MEMORIES_PER_RETRIEVAL} memory IDs.
+- Empty When Irrelevant: If the user's request is purely impersonal or general, return an empty list.
 
-## EXAMPLES (Assumes Current Date: September 15, 2025)
+## EXAMPLES (Use CURRENT DATE/TIME provided in the user prompt)
 
 ### Example 1
 Message: "I'm struggling with imposter syndrome at my new job. Any advice?"
@@ -183,7 +183,7 @@ Explanation: Vegetarian diet is directly relevant to healthy vegetable-focused d
 Message: "What are some good anniversary gift ideas for my wife, Sarah?"
 Memories: [id:mem-101] My wife is named Sarah. [id:mem-102] My wife Sarah loves hiking and mystery novels. [id:mem-103] My wedding anniversary with Sarah is in October. [id:mem-104] I am on a tight budget this month. [id:mem-105] I live in Denver. [id:mem-106] I have a golden retriever named Max.
 Return: {{"ids": ["mem-102", "mem-103", "mem-101", "mem-104"]}}
-Explanation: Wife's interests (hiking, mystery novels) are direct matches for gift suggestions. Anniversary timing and budget constraints are contextual factors. Location and pet are background details not relevant to gift selection.
+Explanation: Wife's interests (hiking, mystery novels) are direct matches for gift suggestions. Anniversary timing and budget constraints are contextual factors that shape recommendations. Location and pet lack connection to gift selection.
 
 ### Example 4
 Message: "I've been reading about quantum computing and I'm confused. Can you break down how quantum bits work differently from regular computer bits?"
