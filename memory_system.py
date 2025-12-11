@@ -302,13 +302,18 @@ class UnifiedCacheManager:
             if key not in type_cache and len(type_cache) >= self.max_cache_size_per_type:
                 type_cache.popitem(last=False)
 
-            if key in type_cache:
-                type_cache[key] = value
-                type_cache.move_to_end(key)
-            else:
-                type_cache[key] = value
-
+            type_cache[key] = value
+            type_cache.move_to_end(key)
             self.caches.move_to_end(user_id)
+
+    async def remove(self, user_id: str, cache_type: str, key: str) -> bool:
+        """Remove specific key from cache."""
+        async with self._lock:
+            if user_id in self.caches and cache_type in self.caches[user_id]:
+                if key in self.caches[user_id][cache_type]:
+                    del self.caches[user_id][cache_type][key]
+                    return True
+        return False
 
     async def clear_user_cache(self, user_id: str, cache_type: Optional[str] = None) -> int:
         """Clear specific cache type for user, or all caches for user if cache_type is None."""
@@ -1024,7 +1029,10 @@ class LLMConsolidationService:
                 user_memories,
             )
 
-        memory_contents_for_deletion = {str(mem.id): mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
+        memory_contents_for_deletion = (
+            {str(mem.id): mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
+        )
+        deleted_contents_for_cache = []
 
         if operations_by_type["CREATE"]:
             operations_by_type["CREATE"] = await self._deduplicate_operations(operations_by_type["CREATE"], user_memories, user_id, operation_type="CREATE")
@@ -1056,14 +1064,24 @@ class LLMConsolidationService:
                     await self.memory_system._emit_status(emitter, f"📝 Created: {content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
                 elif result == Models.MemoryOperationType.UPDATE.value:
                     updated_count += 1
-                    content_preview = self.memory_system._truncate_content(operation.content)
-                    await self.memory_system._emit_status(emitter, f"✏️ Updated: {content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
+                    new_content_preview = self.memory_system._truncate_content(operation.content)
+                    await self.memory_system._emit_status(
+                        emitter, f"✏️ Updated: {new_content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"]
+                    )
+
+                    old_content = memory_contents_for_deletion.get(operation.id)
+                    if old_content:
+                        deleted_contents_for_cache.append(old_content)
+
                 elif result == Models.MemoryOperationType.DELETE.value:
                     deleted_count += 1
-                    content_preview = memory_contents_for_deletion.get(operation.id, operation.id)
-                    if content_preview and content_preview != operation.id:
-                        content_preview = self.memory_system._truncate_content(content_preview)
-                    await self.memory_system._emit_status(emitter, f"🗑️ Deleted: {content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
+                    old_content = memory_contents_for_deletion.get(operation.id, operation.id)
+                    if old_content and old_content != operation.id:
+                        deleted_contents_for_cache.append(old_content)
+                    old_content_preview = self.memory_system._truncate_content(old_content) if old_content else operation.id
+                    await self.memory_system._emit_status(
+                        emitter, f"🗑️ Deleted: {old_content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"]
+                    )
                 elif result in [
                     Models.OperationResult.FAILED.value,
                     Models.OperationResult.UNSUPPORTED.value,
@@ -1079,7 +1097,7 @@ class LLMConsolidationService:
         if total_executed > 0:
             operation_details = self.memory_system._build_operation_details(created_count, updated_count, deleted_count)
             logger.info(f"🔄 Memory operations: {', '.join(operation_details)}")
-            await self.memory_system._refresh_user_cache(user_id)
+            await self.memory_system._refresh_user_cache(user_id, deleted_contents_for_cache)
 
         return created_count, updated_count, deleted_count, failed_count
 
@@ -1759,12 +1777,22 @@ class Filter:
 
         await self._cache_manager.clear_all_caches()
 
-    async def _refresh_user_cache(self, user_id: str) -> None:
-        """Refresh user cache - clear stale caches and update with fresh embeddings."""
+    async def _refresh_user_cache(self, user_id: str, deleted_contents: Optional[List[str]] = None) -> None:
+        """Refresh user cache - clear stale caches, remove deleted embeddings, and update with fresh embeddings."""
         start_time = time.time()
         try:
             retrieval_cleared = await self._cache_manager.clear_user_cache(user_id, self._cache_manager.RETRIEVAL_CACHE)
-            logger.info(f"🔄 Cleared cache: {retrieval_cleared} retrieval entries")
+
+            embedding_removed = 0
+            if deleted_contents:
+                for content in deleted_contents:
+                    if not content:
+                        continue
+                    content_hash = self._compute_text_hash(content)
+                    if await self._cache_manager.remove(user_id, self._cache_manager.EMBEDDING_CACHE, content_hash):
+                        embedding_removed += 1
+
+            logger.info(f"🔄 Cleared cache: {retrieval_cleared} retrieval entries, {embedding_removed} embedding entries")
 
             user_memories = await self._get_user_memories(user_id)
             memory_cache_key = self._cache_key(self._cache_manager.MEMORY_CACHE, user_id)
@@ -1793,34 +1821,23 @@ class Filter:
 
     async def _execute_single_operation(self, operation: Models.MemoryOperation, user: Any) -> str:
         """Execute a single memory operation."""
-        content = operation.content.strip()
-        memory_id = operation.id.strip()
-
         if operation.operation == Models.MemoryOperationType.CREATE:
-            if not content:
-                return Models.OperationResult.SKIPPED_EMPTY_CONTENT.value
             await asyncio.wait_for(
-                asyncio.to_thread(Memories.insert_new_memory, user.id, content),
+                asyncio.to_thread(Memories.insert_new_memory, user.id, operation.content),
                 timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
             )
             return Models.MemoryOperationType.CREATE.value
 
         elif operation.operation == Models.MemoryOperationType.UPDATE:
-            if not memory_id:
-                return Models.OperationResult.SKIPPED_EMPTY_ID.value
-            if not content:
-                return Models.OperationResult.SKIPPED_EMPTY_CONTENT.value
             await asyncio.wait_for(
-                asyncio.to_thread(Memories.update_memory_by_id_and_user_id, memory_id, user.id, content),
+                asyncio.to_thread(Memories.update_memory_by_id_and_user_id, operation.id, user.id, operation.content),
                 timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
             )
             return Models.MemoryOperationType.UPDATE.value
 
         elif operation.operation == Models.MemoryOperationType.DELETE:
-            if not memory_id:
-                return Models.OperationResult.SKIPPED_EMPTY_ID.value
             await asyncio.wait_for(
-                asyncio.to_thread(Memories.delete_memory_by_id_and_user_id, memory_id, user.id),
+                asyncio.to_thread(Memories.delete_memory_by_id_and_user_id, operation.id, user.id),
                 timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
             )
             return Models.MemoryOperationType.DELETE.value
