@@ -1024,7 +1024,7 @@ class LLMConsolidationService:
                 user_memories,
             )
 
-        memory_contents_for_deletion = {str(mem.id): mem.content for mem in user_memories} if operations_by_type["DELETE"] else {}
+        memory_contents_for_deletion = {str(mem.id): mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
 
         if operations_by_type["CREATE"]:
             operations_by_type["CREATE"] = await self._deduplicate_operations(operations_by_type["CREATE"], user_memories, user_id, operation_type="CREATE")
@@ -1764,8 +1764,7 @@ class Filter:
         start_time = time.time()
         try:
             retrieval_cleared = await self._cache_manager.clear_user_cache(user_id, self._cache_manager.RETRIEVAL_CACHE)
-            embedding_cleared = await self._cache_manager.clear_user_cache(user_id, self._cache_manager.EMBEDDING_CACHE)
-            logger.info(f"🔄 Cleared cache: {retrieval_cleared} retrieval, {embedding_cleared} embedding entries")
+            logger.info(f"🔄 Cleared cache: {retrieval_cleared} retrieval entries")
 
             user_memories = await self._get_user_memories(user_id)
             memory_cache_key = self._cache_key(self._cache_manager.MEMORY_CACHE, user_id)
