@@ -1369,7 +1369,10 @@ class Filter:
             raise ValueError(f"📐 Embedding dimension mismatch: expected {self._embedding_dimension}, got {embedding.shape[0]}")
 
         norm = np.linalg.norm(embedding)
-        return embedding / norm if norm > 0 else embedding
+        if norm == 0:
+            logger.warning("⚠️ Zero-norm embedding detected - returning unnormalized embedding")
+            return embedding
+        return embedding / norm
 
     async def _generate_embeddings(self, texts: Union[str, List[str]], user_id: str) -> Union[np.ndarray, List[np.ndarray]]:
         """Unified embedding generation for single text or batch with optimized caching using OpenWebUI's embedding function."""
@@ -1402,7 +1405,11 @@ class Filter:
         if uncached_texts:
             user = await asyncio.to_thread(Users.get_user_by_id, user_id) if hasattr(self, "__user__") else None
 
-            raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
+            try:
+                raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
+            except Exception as e:
+                logger.error(f"❌ Embedding generation failed: {str(e)}")
+                raise RuntimeError(f"Failed to generate embeddings: {str(e)}")
 
             if isinstance(raw_embeddings, list) and len(raw_embeddings) > 0 and isinstance(raw_embeddings[0], (list, np.ndarray)):
                 new_embeddings = [self._normalize_embedding(emb) for emb in raw_embeddings]
