@@ -701,26 +701,28 @@ USER MESSAGE: {user_message}
 CANDIDATE MEMORIES:
 {memory_context}"""
 
-        try:
-            response = await self.memory_system._query_llm(
-                Prompts.MEMORY_RERANKING,
-                user_prompt,
-                response_model=Models.MemoryRerankingResponse,
-            )
+        response = await self.memory_system._query_llm(
+            Prompts.MEMORY_RERANKING,
+            user_prompt,
+            response_model=Models.MemoryRerankingResponse,
+        )
 
-            memory_map = {m["id"]: m for m in candidate_memories}
-            selected_memories = []
-            for memory_id in response.ids:
-                if memory_id in memory_map and len(selected_memories) < max_count:
-                    selected_memories.append(memory_map[memory_id])
+        memory_map = {m["id"]: m for m in candidate_memories}
+        selected_memories = []
+        seen_ids = set()
+        for memory_id in response.ids:
+            if memory_id in seen_ids:
+                continue
+            memory = memory_map.get(memory_id)
+            if memory:
+                selected_memories.append(memory)
+                seen_ids.add(memory_id)
+                if len(selected_memories) >= max_count:
+                    break
 
-            logger.info(f"🧠 LLM selected {len(selected_memories)} out of {len(candidate_memories)} candidates")
+        logger.info(f"🧠 LLM selected {len(selected_memories)} out of {len(candidate_memories)} candidates")
 
-            return selected_memories
-
-        except Exception as e:
-            logger.warning(f"🤖 LLM reranking failed during memory relevance analysis: {str(e)}")
-            return candidate_memories
+        return selected_memories
 
     async def rerank_memories(
         self,
@@ -831,9 +833,6 @@ class LLMConsolidationService:
             user_memories = await self.memory_system._get_user_memories(user_id)
         except asyncio.TimeoutError:
             raise TimeoutError(f"⏱️ Memory retrieval timed out after {Constants.DATABASE_OPERATION_TIMEOUT_SEC}s")
-        except Exception as e:
-            logger.error(f"💾 Failed to retrieve user memories: {str(e)}")
-            return []
 
         if not user_memories:
             logger.info("💭 No existing memories found for consolidation")
@@ -841,11 +840,7 @@ class LLMConsolidationService:
 
         logger.info(f"🚀 Processing {len(user_memories)} cached memories for consolidation")
 
-        try:
-            _, all_similarities = await self.memory_system._compute_similarities(user_message, user_id, user_memories)
-        except Exception as e:
-            logger.error(f"🔍 Failed to compute memory similarities: {str(e)}")
-            return []
+        _, all_similarities = await self.memory_system._compute_similarities(user_message, user_id, user_memories)
 
         if all_similarities:
             candidates, threshold_info = self._filter_consolidation_candidates(all_similarities)
@@ -883,19 +878,14 @@ class LLMConsolidationService:
 
 {memory_context}{message_section}"""
 
-        try:
-            response = await asyncio.wait_for(
-                self.memory_system._query_llm(
-                    Prompts.MEMORY_CONSOLIDATION,
-                    user_prompt,
-                    response_model=Models.ConsolidationResponse,
-                ),
-                timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
-            )
-        except Exception as e:
-            logger.warning(f"🤖 LLM consolidation failed during memory processing: {str(e)}")
-            await self.memory_system._emit_status(emitter, "⚠️ Memory Consolidation Failed", done=True, level=Constants.STATUS_LEVEL["Basic"])
-            return []
+        response = await asyncio.wait_for(
+            self.memory_system._query_llm(
+                Prompts.MEMORY_CONSOLIDATION,
+                user_prompt,
+                response_model=Models.ConsolidationResponse,
+            ),
+            timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
+        )
 
         operations = response.ops
         existing_memory_ids = {memory["id"] for memory in candidate_memories}
@@ -1511,15 +1501,17 @@ class Filter:
         """Parse various timestamp formats (epoch, ISO string, datetime) into UTC datetime."""
         if not timestamp:
             return None
-        try:
-            if isinstance(timestamp, (int, float)):
-                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            if isinstance(timestamp, str):
-                return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            if isinstance(timestamp, datetime):
-                return timestamp
-        except Exception as e:
-            logger.warning(f"📅 Failed to parse timestamp {timestamp}: {str(e)}")
+        if isinstance(timestamp, (int, float)):
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        if isinstance(timestamp, str):
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                return timestamp.replace(tzinfo=timezone.utc)
+            return timestamp.astimezone(timezone.utc)
         return None
 
     def format_current_datetime(self) -> str:
