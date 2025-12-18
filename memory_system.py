@@ -708,10 +708,11 @@ CANDIDATE MEMORIES:
                 response_model=Models.MemoryRerankingResponse,
             )
 
+            memory_map = {m["id"]: m for m in candidate_memories}
             selected_memories = []
-            for memory in candidate_memories:
-                if memory["id"] in response.ids and len(selected_memories) < max_count:
-                    selected_memories.append(memory)
+            for memory_id in response.ids:
+                if memory_id in memory_map and len(selected_memories) < max_count:
+                    selected_memories.append(memory_map[memory_id])
 
             logger.info(f"🧠 LLM selected {len(selected_memories)} out of {len(candidate_memories)} candidates")
 
@@ -841,7 +842,7 @@ class LLMConsolidationService:
         logger.info(f"🚀 Processing {len(user_memories)} cached memories for consolidation")
 
         try:
-            all_similarities, _, _ = await self.memory_system._compute_similarities(user_message, user_id, user_memories)
+            _, all_similarities = await self.memory_system._compute_similarities(user_message, user_id, user_memories)
         except Exception as e:
             logger.error(f"🔍 Failed to compute memory similarities: {str(e)}")
             return []
@@ -1506,6 +1507,21 @@ class Filter:
             return f"{cache_type}_{user_id}:{content_hash}"
         return f"{cache_type}_{user_id}"
 
+    def _parse_timestamp(self, timestamp: Any) -> Optional[datetime]:
+        """Parse various timestamp formats (epoch, ISO string, datetime) into UTC datetime."""
+        if not timestamp:
+            return None
+        try:
+            if isinstance(timestamp, (int, float)):
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            if isinstance(timestamp, str):
+                return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if isinstance(timestamp, datetime):
+                return timestamp
+        except Exception as e:
+            logger.warning(f"📅 Failed to parse timestamp {timestamp}: {str(e)}")
+        return None
+
     def format_current_datetime(self) -> str:
         """Return current UTC datetime in human-readable format."""
         return datetime.now(timezone.utc).strftime("%A %B %d %Y at %H:%M:%S UTC")
@@ -1516,17 +1532,12 @@ class Filter:
         for memory in memories:
             line = f"[{memory['id']}] {memory['content']}"
             record_date = memory.get("updated_at") or memory.get("created_at")
-            if record_date:
-                try:
-                    if isinstance(record_date, str):
-                        parsed_date = datetime.fromisoformat(record_date.replace("Z", "+00:00"))
-                    else:
-                        parsed_date = record_date
-                    formatted_date = parsed_date.strftime("%b %d %Y")
-                    line += f" [noted at {formatted_date}]"
-                except Exception as e:
-                    logger.warning(f"📅 Failed to format date {record_date}: {str(e)}")
-                    line += f" [noted at {record_date}]"
+            parsed_date = self._parse_timestamp(record_date)
+            if parsed_date:
+                formatted_date = parsed_date.strftime("%b %d %Y")
+                line += f" [noted at {formatted_date}]"
+            elif record_date:
+                line += f" [noted at {record_date}]"
             memory_lines.append(line)
         return memory_lines
 
@@ -1647,10 +1658,15 @@ class Filter:
             "content": memory.content,
             "relevance": similarity,
         }
-        if hasattr(memory, "created_at") and memory.created_at:
-            memory_dict["created_at"] = datetime.fromtimestamp(memory.created_at, tz=timezone.utc).isoformat()
-        if hasattr(memory, "updated_at") and memory.updated_at:
-            memory_dict["updated_at"] = datetime.fromtimestamp(memory.updated_at, tz=timezone.utc).isoformat()
+
+        created_at = self._parse_timestamp(getattr(memory, "created_at", None))
+        if created_at:
+            memory_dict["created_at"] = created_at.isoformat()
+
+        updated_at = self._parse_timestamp(getattr(memory, "updated_at", None))
+        if updated_at:
+            memory_dict["updated_at"] = updated_at.isoformat()
+
         return memory_dict
 
     async def _compute_similarities(self, user_message: str, user_id: str, user_memories: List) -> Tuple[List[Dict], List[Dict]]:
