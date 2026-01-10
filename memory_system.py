@@ -208,12 +208,6 @@ class Models:
         UPDATE = "UPDATE"
         DELETE = "DELETE"
 
-    class OperationResult(Enum):
-        SKIPPED_EMPTY_CONTENT = "SKIPPED_EMPTY_CONTENT"
-        SKIPPED_EMPTY_ID = "SKIPPED_EMPTY_ID"
-        UNSUPPORTED = "UNSUPPORTED"
-        FAILED = "FAILED"
-
     class StrictModel(BaseModel):
         """Base model with strict JSON schema for LLM structured output."""
 
@@ -231,13 +225,25 @@ class Models:
             if existing_memory_ids is None:
                 existing_memory_ids = set()
 
+            op_id = (self.id or "").strip()
+            cleaned_content = (self.content or "").strip()
+
             if self.operation == Models.MemoryOperationType.CREATE:
-                return True
-            elif self.operation in [
-                Models.MemoryOperationType.UPDATE,
-                Models.MemoryOperationType.DELETE,
-            ]:
-                return self.id in existing_memory_ids
+                if cleaned_content:
+                    self.content = cleaned_content
+                    return True
+                return False
+            elif self.operation == Models.MemoryOperationType.UPDATE:
+                if op_id and op_id in existing_memory_ids and cleaned_content:
+                    self.id = op_id
+                    self.content = cleaned_content
+                    return True
+                return False
+            elif self.operation == Models.MemoryOperationType.DELETE:
+                if op_id and op_id in existing_memory_ids:
+                    self.id = op_id
+                    return True
+                return False
             return False
 
     class ConsolidationResponse(BaseModel):
@@ -557,7 +563,7 @@ class SkipDetector:
                     if rest and not rest[0].isupper() and " " in rest:
                         actual_command_lines += 1
                 elif stripped.startswith("> ") and len(stripped) > 2:
-                    pass
+                    continue
 
             if actual_command_lines >= 1 and any(c in message for c in ["http://", "https://", " | "]):
                 return True
@@ -628,7 +634,7 @@ class SkipDetector:
 
         return None
 
-    async def detect_skip_reason(self, message: str, max_message_chars: int, memory_system: "Filter") -> Optional[str]:
+    async def detect_skip_reason(self, message: str, max_message_chars: int, memory_system: "Filter", user_id: Optional[str] = None) -> Optional[str]:
         """Detect if a message should be skipped using two-stage detection: fast-path structural patterns and binary semantic classification."""
         size_issue = self.validate_message_size(message, max_message_chars)
         if size_issue:
@@ -642,14 +648,18 @@ class SkipDetector:
         if self._reference_embeddings is None:
             await self.initialize()
 
-        message_embedding_result = await self.embedding_function([message.strip()])
-        message_embedding = np.array(message_embedding_result[0])
+        # Use memory_system's embedding generation to leverage per-user caching if possible
+        if user_id:
+            message_embedding = await memory_system._generate_embeddings(message.strip(), user_id)
+        else:
+            message_embedding_result = await self.embedding_function([message.strip()])
+            message_embedding = np.array(message_embedding_result[0])
 
         personal_similarities = np.dot(message_embedding, self._reference_embeddings["personal"].T)
-        max_personal_similarity = float(personal_similarities.max())
+        max_personal_similarity = personal_similarities.max()
 
         non_personal_similarities = np.dot(message_embedding, self._reference_embeddings["non_personal"].T)
-        max_non_personal_similarity = float(non_personal_similarities.max())
+        max_non_personal_similarity = non_personal_similarities.max()
 
         margin = memory_system.valves.skip_category_margin
         threshold = max_personal_similarity + margin
@@ -793,13 +803,13 @@ class LLMConsolidationService:
             if memory_embedding is None:
                 continue
             memory = memories[i]
-            if exclude_id and str(memory.id) == exclude_id:
+            if exclude_id and memory.id == exclude_id:
                 continue
 
-            similarity = float(np.dot(content_embedding, memory_embedding))
+            similarity = np.dot(content_embedding, memory_embedding)
             if similarity >= Constants.DEDUPLICATION_SIMILARITY_THRESHOLD:
                 logger.info(f"🔍 Semantic duplicate detected: similarity={similarity:.3f} with memory {memory.id}")
-                return str(memory.id)
+                return memory.id
 
         return None
 
@@ -940,7 +950,13 @@ class LLMConsolidationService:
         return valid_operations
 
     async def _deduplicate_operations(
-        self, operations: List, current_memories: List, user_id: str, operation_type: str, delete_operations: Optional[List] = None
+        self,
+        operations: List,
+        valid_memories: List,
+        memory_embeddings: List[np.ndarray],
+        user_id: str,
+        operation_type: str,
+        delete_operations: Optional[List] = None,
     ) -> List:
         """Semantically deduplicate operations against existing memories. For UPDATEs, preserve enriched content and delete duplicates."""
         if not operations:
@@ -948,11 +964,7 @@ class LLMConsolidationService:
 
         deduplicated = []
 
-        valid_memories = [m for m in current_memories if m.content and len(m.content.strip()) >= Constants.MIN_MESSAGE_CHARS]
-        memory_embeddings = []
-        if valid_memories:
-            memory_contents = [m.content for m in valid_memories]
-            memory_embeddings = await self.memory_system._generate_embeddings(memory_contents, user_id)
+        id_to_index = {m.id: i for i, m in enumerate(valid_memories)}
 
         op_contents = [op.content for op in operations]
         op_embeddings = await self.memory_system._generate_embeddings(op_contents, user_id)
@@ -962,6 +974,14 @@ class LLMConsolidationService:
             if op_embedding is None or not valid_memories:
                 deduplicated.append(operation)
                 continue
+
+            if operation_type == "UPDATE":
+                target_idx = id_to_index.get(operation.id)
+                if target_idx is not None and target_idx < len(memory_embeddings) and memory_embeddings[target_idx] is not None:
+                    similarity = np.dot(op_embedding, memory_embeddings[target_idx])
+                    if similarity >= Constants.DEDUPLICATION_SIMILARITY_THRESHOLD:
+                        logger.info(f"⏭️ Skipping redundant UPDATE for {operation.id}: content similar ({similarity:.3f})")
+                        continue
 
             exclude_id = operation.id if operation_type == "UPDATE" else None
             duplicate_id = await self._check_semantic_duplicate(op_embedding, memory_embeddings, valid_memories, exclude_id)
@@ -997,8 +1017,10 @@ class LLMConsolidationService:
                 operation = Models.MemoryOperation(**operation_data)
                 operations_by_type[operation.operation.value].append(operation)
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 failed_count += 1
-                operation_type = operation_data.get("operation", Models.OperationResult.UNSUPPORTED.value)
+                operation_type = operation_data.get("operation", "UNSUPPORTED")
                 content_preview = ""
                 if "content" in operation_data:
                     content = operation_data.get("content", "")
@@ -1021,16 +1043,34 @@ class LLMConsolidationService:
             )
 
         memory_contents_for_deletion = (
-            {str(mem.id): mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
+            {mem.id: mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
         )
         deleted_contents_for_cache = []
 
+        # Optimization: Pre-compute valid memories and their embeddings once for all dedup operations
+        valid_memories = [m for m in user_memories if m.content and len(m.content.strip()) >= Constants.MIN_MESSAGE_CHARS]
+        memory_embeddings = []
+        if valid_memories:
+            memory_contents = [m.content for m in valid_memories]
+            memory_embeddings = await self.memory_system._generate_embeddings(memory_contents, user_id)
+
         if operations_by_type["CREATE"]:
-            operations_by_type["CREATE"] = await self._deduplicate_operations(operations_by_type["CREATE"], user_memories, user_id, operation_type="CREATE")
+            operations_by_type["CREATE"] = await self._deduplicate_operations(
+                operations_by_type["CREATE"],
+                valid_memories,
+                memory_embeddings,
+                user_id,
+                operation_type="CREATE",
+            )
 
         if operations_by_type["UPDATE"]:
             operations_by_type["UPDATE"] = await self._deduplicate_operations(
-                operations_by_type["UPDATE"], user_memories, user_id, operation_type="UPDATE", delete_operations=operations_by_type["DELETE"]
+                operations_by_type["UPDATE"],
+                valid_memories,
+                memory_embeddings,
+                user_id,
+                operation_type="UPDATE",
+                delete_operations=operations_by_type["DELETE"],
             )
 
         for operation_type, ops in operations_by_type.items():
@@ -1073,12 +1113,6 @@ class LLMConsolidationService:
                     await self.memory_system._emit_status(
                         emitter, f"🗑️ Deleted: {old_content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"]
                     )
-                elif result in [
-                    Models.OperationResult.FAILED.value,
-                    Models.OperationResult.UNSUPPORTED.value,
-                ]:
-                    failed_count += 1
-                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
 
         total_executed = created_count + updated_count + deleted_count
         logger.info(
@@ -1147,6 +1181,8 @@ class LLMConsolidationService:
                 )
 
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             duration = time.time() - start_time
             raise RuntimeError(f"❌ Memory consolidation failed after {duration:.2f}s: {str(e)}")
 
@@ -1331,7 +1367,7 @@ class Filter:
 
     def _compute_text_hash(self, text: str) -> str:
         """Compute SHA256 hash for text caching."""
-        return hashlib.sha256(str(text).encode()).hexdigest()
+        return hashlib.sha256(text.encode()).hexdigest()
 
     async def _detect_embedding_dimension(self) -> None:
         """Detect embedding dimension by generating a test embedding."""
@@ -1376,13 +1412,13 @@ class Filter:
         uncached_hashes = []
 
         for i, text in enumerate(text_list):
-            if not text or len(str(text).strip()) < Constants.MIN_MESSAGE_CHARS:
+            if not text or len(text.strip()) < Constants.MIN_MESSAGE_CHARS:
                 if is_single:
                     raise ValueError("📏 Text too short for embedding generation")
                 result_embeddings.append(None)
                 continue
 
-            text_hash = self._compute_text_hash(str(text))
+            text_hash = self._compute_text_hash(text)
             cached = await self._get_embedding_cache(user_id, text_hash)
 
             if cached is not None:
@@ -1399,6 +1435,8 @@ class Filter:
             try:
                 raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.error(f"❌ Embedding generation failed: {str(e)}")
                 raise RuntimeError(f"Failed to generate embeddings: {str(e)}")
 
@@ -1422,14 +1460,14 @@ class Filter:
             logger.info(f"🚀 Batch embeddings: {len(text_list) - len(uncached_texts)} cached, {len(uncached_texts)} new, {valid_count}/{len(text_list)} valid")
             return result_embeddings
 
-    async def _should_skip_memory_operations(self, user_message: str) -> Tuple[bool, str]:
-        skip_reason = await self._skip_detector.detect_skip_reason(user_message, Constants.MAX_MESSAGE_CHARS, memory_system=self)
+    async def _should_skip_memory_operations(self, user_message: str, user_id: Optional[str] = None) -> Tuple[bool, str]:
+        skip_reason = await self._skip_detector.detect_skip_reason(user_message, Constants.MAX_MESSAGE_CHARS, memory_system=self, user_id=user_id)
         if skip_reason:
             status_key = SkipDetector.SkipReason(skip_reason)
             return True, SkipDetector.INLET_STATUS_MESSAGES[status_key]
         return False, ""
 
-    async def _should_skip_consolidation(self, conversation_context: List[str]) -> Tuple[bool, str]:
+    async def _should_skip_consolidation(self, conversation_context: List[str], user_id: Optional[str] = None) -> Tuple[bool, str]:
         """Check if consolidation should be skipped based on conversation context.
 
         Returns (should_skip, reason). Skips only if ALL messages in context are skippable.
@@ -1437,7 +1475,7 @@ class Filter:
         logger.info(f"🔍 Evaluating {len(conversation_context)} messages for consolidation")
 
         for idx, message in enumerate(conversation_context, 1):
-            skip_reason = await self._skip_detector.detect_skip_reason(message, Constants.MAX_MESSAGE_CHARS, memory_system=self)
+            skip_reason = await self._skip_detector.detect_skip_reason(message, Constants.MAX_MESSAGE_CHARS, memory_system=self, user_id=user_id)
             if not skip_reason:  # Found at least one valuable message
                 logger.info(f"✅ Found personal content in message {idx}/{len(conversation_context)}, proceeding with consolidation")
                 return False, ""
@@ -1446,13 +1484,13 @@ class Filter:
         logger.info(f"🚫 All {len(conversation_context)} messages are non-personal, skipping consolidation")
         return True, SkipDetector.OUTLET_STATUS_MESSAGES[SkipDetector.SkipReason.SKIP_ALL_NON_PERSONAL]
 
-    async def _process_user_message(self, body: Dict[str, Any]) -> Tuple[Optional[str], bool, str]:
+    async def _process_user_message(self, body: Dict[str, Any], user_id: Optional[str] = None) -> Tuple[Optional[str], bool, str]:
         """Extract user message and determine if memory operations should be skipped."""
         user_message = self._get_last_user_message(body["messages"])
         if not user_message:
             return None, True, SkipDetector.INLET_STATUS_MESSAGES[SkipDetector.SkipReason.SKIP_SIZE]
 
-        should_skip, skip_reason = await self._should_skip_memory_operations(user_message)
+        should_skip, skip_reason = await self._should_skip_memory_operations(user_message, user_id)
         return user_message, should_skip, skip_reason
 
     async def _get_user_memories(self, user_id: str) -> List:
@@ -1471,7 +1509,7 @@ class Filter:
         scores = [memory["relevance"] for memory in memories]
         top_score = max(scores)
         lowest_score = min(scores)
-        median_score = float(np.median(scores))
+        median_score = np.median(scores)
 
         context_label = "📊 Consolidation candidate memories" if context_type == "consolidation" else "📊 Retrieved memories"
         max_scores_to_show = int(self.valves.max_memories_returned * Constants.EXTENDED_MAX_MEMORY_MULTIPLIER)
@@ -1493,7 +1531,7 @@ class Filter:
     def _cache_key(self, cache_type: str, user_id: str, content: Optional[str] = None) -> str:
         """Unified cache key generation for all cache types."""
         if content:
-            content_hash = hashlib.sha256(str(content).encode("utf-8")).hexdigest()[: Constants.CACHE_KEY_HASH_PREFIX_LENGTH]
+            content_hash = self._compute_text_hash(content)[: Constants.CACHE_KEY_HASH_PREFIX_LENGTH]
             return f"{cache_type}_{user_id}:{content_hash}"
         return f"{cache_type}_{user_id}"
 
@@ -1564,7 +1602,8 @@ class Filter:
     ) -> Dict[str, Any]:
         """Retrieve memories for injection using similarity computation with optional LLM reranking."""
         if cached_similarities is not None:
-            memories = [m for m in cached_similarities if m.get("relevance", 0) >= self.valves.semantic_retrieval_threshold]
+            retrieval_threshold = self._get_retrieval_threshold(is_consolidation=False)
+            memories = [m for m in cached_similarities if m.get("relevance", 0) >= retrieval_threshold]
             logger.info(f"🔍 Using cached similarities: {len(memories)} candidates")
             final_memories, reranking_info = await self._llm_reranking_service.rerank_memories(user_message, memories, emitter)
             self._log_retrieved_memories(final_memories, "semantic")
@@ -1646,7 +1685,7 @@ class Filter:
     def _build_memory_dict(self, memory, similarity: float) -> Dict[str, Any]:
         """Build memory dictionary with standardized timestamp conversion."""
         memory_dict = {
-            "id": str(memory.id),
+            "id": memory.id,
             "content": memory.content,
             "relevance": similarity,
         }
@@ -1676,13 +1715,14 @@ class Filter:
             if memory_embedding is None:
                 continue
 
-            similarity = float(np.dot(query_embedding, memory_embedding))
+            similarity = np.dot(query_embedding, memory_embedding)
             memory_dict = self._build_memory_dict(memory, similarity)
             memory_data.append(memory_dict)
 
         memory_data.sort(key=lambda x: x["relevance"], reverse=True)
 
-        filtered_memories = [m for m in memory_data if m["relevance"] >= self.valves.semantic_retrieval_threshold]
+        retrieval_threshold = self._get_retrieval_threshold(is_consolidation=False)
+        filtered_memories = [m for m in memory_data if m["relevance"] >= retrieval_threshold]
         return filtered_memories, memory_data
 
     async def inlet(
@@ -1697,11 +1737,11 @@ class Filter:
         model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 
-        user_id = __user__.get("id") if body and __user__ else None
+        user_id = __user__.get("id") if __user__ else None
         if not user_id:
             return body
 
-        user_message, should_skip, skip_reason = await self._process_user_message(body)
+        user_message, should_skip, skip_reason = await self._process_user_message(body, user_id)
 
         if not user_message or should_skip:
             if __event_emitter__ and skip_reason:
@@ -1732,6 +1772,8 @@ class Filter:
                 )
             await self._add_memory_context(body, memories, user_id, __event_emitter__)
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             raise RuntimeError(f"💾 Memory retrieval failed: {str(e)}")
         return body
 
@@ -1747,7 +1789,7 @@ class Filter:
         model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
         await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
 
-        user_id = __user__.get("id") if body and __user__ else None
+        user_id = __user__.get("id") if __user__ else None
         if not user_id:
             return body
 
@@ -1756,7 +1798,7 @@ class Filter:
             return body
 
         conversation_context = self._get_recent_user_messages(body.get("messages", []), self.valves.max_consolidation_context_messages)
-        should_skip_consolidation, skip_reason = await self._should_skip_consolidation(conversation_context)
+        should_skip_consolidation, skip_reason = await self._should_skip_consolidation(conversation_context, user_id)
 
         if should_skip_consolidation:
             await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL["Intermediate"])
@@ -1773,10 +1815,14 @@ class Filter:
         def safe_cleanup(t: asyncio.Task) -> None:
             try:
                 self._background_tasks.discard(t)
-                if t.exception() and not t.cancelled():
-                    exception = t.exception()
+                if t.cancelled():
+                    return
+                exception = t.exception()
+                if exception:
                     logger.error(f"❌ Background consolidation failed: {str(exception)}")
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.error(f"❌ Failed to cleanup background task: {str(e)}")
 
         task.add_done_callback(safe_cleanup)
@@ -1787,7 +1833,8 @@ class Filter:
         self._shutdown_event.set()
 
         if self._background_tasks:
-            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            tasks = list(self._background_tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
             self._background_tasks.clear()
 
         await self._cache_manager.clear_all_caches()
@@ -1832,32 +1879,40 @@ class Filter:
                 logger.info(f"🔄 Cache refreshed: {len(memory_contents)} embeddings in {duration:.2f}s")
 
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             raise RuntimeError(f"🧹 Failed to refresh cache for user {user_id} after {(time.time() - start_time):.2f}s: {str(e)}")
+
+    async def _execute_db_operation(self, db_func: Callable, *args) -> None:
+        """Execute database operation with timeout and threading."""
+        await asyncio.wait_for(
+            asyncio.to_thread(db_func, *args),
+            timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
+        )
 
     async def _execute_single_operation(self, operation: Models.MemoryOperation, user: Any) -> str:
         """Execute a single memory operation."""
-        if operation.operation == Models.MemoryOperationType.CREATE:
-            await asyncio.wait_for(
-                asyncio.to_thread(Memories.insert_new_memory, user.id, operation.content),
-                timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
-            )
-            return Models.MemoryOperationType.CREATE.value
+        try:
+            if operation.operation == Models.MemoryOperationType.CREATE:
+                await self._execute_db_operation(Memories.insert_new_memory, user.id, operation.content)
+                return Models.MemoryOperationType.CREATE.value
 
-        elif operation.operation == Models.MemoryOperationType.UPDATE:
-            await asyncio.wait_for(
-                asyncio.to_thread(Memories.update_memory_by_id_and_user_id, operation.id, user.id, operation.content),
-                timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
-            )
-            return Models.MemoryOperationType.UPDATE.value
+            elif operation.operation == Models.MemoryOperationType.UPDATE:
+                await self._execute_db_operation(Memories.update_memory_by_id_and_user_id, operation.id, user.id, operation.content)
+                return Models.MemoryOperationType.UPDATE.value
 
-        elif operation.operation == Models.MemoryOperationType.DELETE:
-            await asyncio.wait_for(
-                asyncio.to_thread(Memories.delete_memory_by_id_and_user_id, operation.id, user.id),
-                timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
-            )
-            return Models.MemoryOperationType.DELETE.value
-
-        return Models.OperationResult.UNSUPPORTED.value
+            elif operation.operation == Models.MemoryOperationType.DELETE:
+                await self._execute_db_operation(Memories.delete_memory_by_id_and_user_id, operation.id, user.id)
+                return Models.MemoryOperationType.DELETE.value
+        except Exception as e:
+            op_id = (operation.id or "").strip()
+            content_preview = self._truncate_content(operation.content, Constants.CONTENT_PREVIEW_LENGTH) if operation.content else ""
+            details = f"id={op_id}" if op_id else ""
+            if content_preview:
+                details = f"{details} content={content_preview}".strip()
+            details = f" ({details})" if details else ""
+            logger.error(f"❌ Memory DB operation failed for {operation.operation.value}{details}: {str(e)}")
+            raise
 
     def _remove_refs_from_schema(self, schema: Dict[str, Any], schema_defs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Remove $ref references and ensure required fields for Azure OpenAI."""
@@ -1926,19 +1981,14 @@ class Filter:
                 },
             }
 
-        try:
-            response = await asyncio.wait_for(
-                generate_chat_completion(
-                    self.__request__,
-                    form_data,
-                    user=await asyncio.to_thread(Users.get_user_by_id, self.__user__["id"]),
-                ),
-                timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
-            )
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"⏱️ LLM query timed out after {Constants.LLM_CONSOLIDATION_TIMEOUT_SEC}s")
-        except Exception as e:
-            raise RuntimeError(f"🤖 LLM query failed: {str(e)}")
+        response = await asyncio.wait_for(
+            generate_chat_completion(
+                self.__request__,
+                form_data,
+                user=await asyncio.to_thread(Users.get_user_by_id, self.__user__["id"]),
+            ),
+            timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
+        )
 
         if hasattr(response, "body"):
             response_data = json.loads(response.body.decode("utf-8"))
