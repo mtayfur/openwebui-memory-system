@@ -78,6 +78,13 @@ class Prompts:
 ## OBJECTIVE
 Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
 
+## INPUT FORMAT
+You will receive a JSON object containing:
+- `current_time`: The current date and time.
+- `user_message`: The latest user message (if no conversation context is provided).
+- `conversation`: An array of recent messages for context resolution (if available).
+- `existing_memories`: A list of potential memories for consolidation.
+
 ## AVAILABLE OPERATIONS
 - CREATE: For new significant facts with lasting relevance to user's life and identity. Include dates when stated. Resolve pronouns to named entities.
 - UPDATE: To add names, enrich with meaningful context, correct significant facts, or convert to historical with end date and past-tense. Never for rephrasing.
@@ -152,6 +159,12 @@ Explanation: The pronoun "She" in messages 2 and 3 refers to "Maria" from messag
 
 ## OBJECTIVE
 Your goal is to analyze the user's message and select the most relevant memories to personalize the AI's response. Prioritize direct connections and supporting context.
+
+## INPUT FORMAT
+You will receive a JSON object containing:
+- `current_time`: The current date and time.
+- `user_message`: The latest user message.
+- `candidate_memories`: A list of potential memory strings with their IDs and noted dates.
 
 ## RELEVANCE CATEGORIES
 - Direct: Memories explicitly about the query topic, people, or domain.
@@ -702,14 +715,15 @@ class LLMRerankingService:
     ) -> List[Dict]:
         """Use LLM to select most relevant memories."""
         memory_lines = self.memory_system._format_memories_for_llm(candidate_memories)
-        memory_context = "\n".join(memory_lines)
 
-        user_prompt = f"""CURRENT DATE/TIME: {self.memory_system.format_current_datetime()}
-
-USER MESSAGE: {user_message}
-
-CANDIDATE MEMORIES:
-{memory_context}"""
+        user_prompt = json.dumps(
+            {
+                "current_time": self.memory_system.format_current_datetime(),
+                "user_message": user_message,
+                "candidate_memories": memory_lines,
+            },
+            indent=2,
+        )
 
         response = await self.memory_system._query_llm(
             Prompts.MEMORY_RERANKING,
@@ -872,21 +886,19 @@ class LLMConsolidationService:
         conversation_context: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Generate consolidation plan using LLM with clear system/user prompt separation."""
-        if candidate_memories:
-            memory_lines = self.memory_system._format_memories_for_llm(candidate_memories)
-            memory_context = f"EXISTING MEMORIES FOR CONSOLIDATION:\n{chr(10).join(memory_lines)}\n\n"
-        else:
-            memory_context = "EXISTING MEMORIES FOR CONSOLIDATION:\n[]\n\nNote: No existing memories found - Focus on extracting new memories from the user message below.\n\n"
+        memory_lines = self.memory_system._format_memories_for_llm(candidate_memories)
+
+        prompt_data = {
+            "current_time": self.memory_system.format_current_datetime(),
+            "existing_memories": memory_lines,
+        }
 
         if conversation_context and len(conversation_context) > 1:
-            context_lines = [f'[{i+1}] "{msg}"' for i, msg in enumerate(conversation_context)]
-            message_section = f"CONVERSATION (recent messages for pronoun/context resolution):\n{chr(10).join(context_lines)}"
+            prompt_data["conversation"] = conversation_context
         else:
-            message_section = f"USER MESSAGE: {user_message}"
+            prompt_data["user_message"] = user_message
 
-        user_prompt = f"""CURRENT DATE/TIME: {self.memory_system.format_current_datetime()}
-
-{memory_context}{message_section}"""
+        user_prompt = json.dumps(prompt_data, indent=2)
 
         response = await asyncio.wait_for(
             self.memory_system._query_llm(
