@@ -1,7 +1,7 @@
 """
 title: Memory System
 description: A semantic memory management system for Open WebUI that consolidates, deduplicates, and retrieves personalized user memories using LLM operations.
-version: 1.2.1
+version: 1.3.0
 authors: https://github.com/mtayfur
 license: Apache-2.0
 required_open_webui_version: 0.6.40
@@ -27,7 +27,8 @@ from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
 
-_SHARED_SKIP_DETECTOR_CACHE = {}
+MAX_SKIP_DETECTOR_CACHE_ENTRIES = 10
+_SHARED_SKIP_DETECTOR_CACHE = OrderedDict()
 _SHARED_SKIP_DETECTOR_CACHE_LOCK = asyncio.Lock()
 
 
@@ -36,9 +37,9 @@ class Constants:
 
     # Core System Limits
     MAX_MEMORY_CONTENT_CHARS = 500  # Character limit for LLM prompt memory content
-    MAX_MEMORY_SENTENCES = 3  # Sentence limit per memory for clarity
+    MAX_MEMORY_SENTENCES = 5  # Sentence limit per memory for clarity
     MAX_MEMORIES_PER_RETRIEVAL = 10  # Maximum memories returned per query
-    MAX_MESSAGE_CHARS = 3000  # Maximum message length for validation
+    MAX_MESSAGE_CHARS = 5000  # Maximum message length for validation
     MIN_MESSAGE_CHARS = 10  # Minimum message length for validation
     MAX_CONSOLIDATION_CONTEXT_MESSAGES = 3  # Number of recent messages to include for pronoun/context resolution
     DATABASE_OPERATION_TIMEOUT_SEC = 10  # Timeout for DB operations like user lookup
@@ -73,136 +74,147 @@ class Constants:
 class Prompts:
     """Container for all LLM prompts used in the memory system."""
 
-    MEMORY_CONSOLIDATION = f"""You are the Memory System Consolidator, a specialist in creating precise user memories.
+    MEMORY_CONSOLIDATION = f"""You are the Memory Consolidator. Extract and maintain precise personal facts from user messages as first-person English statements.
 
-## OBJECTIVE
-Your goal is to build precise memories of the user's personal narrative with factual, temporal statements.
+## INPUT
+JSON object containing:
+- `current_time`: Current UTC datetime for resolving relative dates.
+- `user_message`: The latest user message (present when no conversation context is provided).
+- `conversation`: Ordered array of recent user messages (user-authored only). When present, the LAST entry is the latest message. Analyze ALL entries for entity resolution.
+- `existing_memories`: User's stored memories as `[id] content [noted at date]`. May be empty.
 
-## INPUT FORMAT
-You will receive a JSON object containing:
-- `current_time`: The current date and time.
-- `user_message`: The latest user message (if no conversation context is provided).
-- `conversation`: An array of recent messages for context resolution (if available).
-- `existing_memories`: A list of potential memories for consolidation.
+## OPERATIONS
+- **CREATE**: `{{"operation": "CREATE", "id": "", "content": "..."}}` — New significant personal fact with lasting relevance.
+- **UPDATE**: `{{"operation": "UPDATE", "id": "mem-xxx", "content": "..."}}` — Enrich an existing memory with newly revealed names, dates, or meaningful context. **Never UPDATE merely to rephrase, reword, or restructure a memory that is already accurate and complete.**
+- **DELETE**: `{{"operation": "DELETE", "id": "mem-xxx", "content": ""}}` — Remove only when the user explicitly revokes a fact or states a direct contradiction.
+- **SKIP**: Return `{{"ops": []}}` when no operation is warranted.
 
-## AVAILABLE OPERATIONS
-- CREATE: For new significant facts with lasting relevance to user's life and identity. Include dates when stated. Resolve pronouns to named entities.
-- UPDATE: To add names, enrich with meaningful context, correct significant facts, or convert to historical with end date and past-tense. Never for rephrasing.
-- DELETE: For explicit revocations or direct contradictions.
-- SKIP: Return {{"ops": []}} when no memory operations are appropriate.
+## DECISION SEQUENCE (evaluate in strict order — stop at first match)
 
-## PROCESSING GUIDELINES
-- **Filter for Intent:** You MUST SKIP if the user's primary intent is instructional, technical, or analytical, even if personal details are mentioned. This includes:
-    - Rewrite, revise, translate, or proofread requests.
-    - General knowledge, math, or technical questions.
-    - Concept explanations, calculations, or persona roleplay.
-  **Only store facts when the user is *directly stating* them as part of a personal narrative, not providing them as task input.**
-- Personal Facts Only: Store only significant facts with lasting relevance to the user's life and identity. Exclude transient situations, questions, general knowledge, casual mentions, or momentary states.
-- Maintain Temporal Accuracy:
-    - Capture Dates: Record temporal information when explicitly stated or clearly derivable. Convert relative references (last month, yesterday) to specific dates.
-    - Preserve History: Transform superseded facts into past-tense statements with defined time boundaries.
-    - Avoid Assumptions: Do not assign current dates to ongoing states, habits, or conditions lacking explicit temporal context.
-- Ensure Memory Quality:
-    - High Bar for Creation: Only CREATE memories for significant life facts, relationships, events, or core personal attributes. Skip trivial details or passing interests.
-    - Conciseness: Limit each memory to {Constants.MAX_MEMORY_SENTENCES} sentences and {Constants.MAX_MEMORY_CONTENT_CHARS} characters. If a new or existing memory exceeds these limits, decompose it into smaller, self-contained facts.
-    - Entity Resolution: Link pronouns (he, she, they) and generic nouns to their specific named entities before storing. When a CONVERSATION is provided, use it to resolve ambiguous references (e.g., "the project", "that place"). Store relationships with complete context—always specify with whom, never partial connections.
-    - First-Person Format: Write all memories in English from the user's perspective.
+### 1. Intent Gate
+SKIP if the user's primary intent is NOT to state a personal fact. This includes:
+- Instructional requests: rewrite, translate, proofread, debug, format, generate, summarize, compare, calculate, explain.
+- Questions seeking help, advice, recommendations, or information — even when personal details appear as task parameters.
+- Creative writing, persona roleplay, or content generation.
+**Only proceed when the user is directly stating personal facts as part of their own narrative.**
 
-## DECISION FRAMEWORK
-- Selectivity: Verify the user's *primary intent* is to state a personally significant fact. If intent is instructional, analytical, or a question, SKIP.
-- Conservatism: Never create duplicates. Skip momentary events or casual mentions. Be conservative with CREATE and UPDATE.
-- Strategy: Prioritize enriching existing memories over creating new ones. Combine naturally connected facts (same person, event, or timeframe) into one cohesive memory when clearly related. Each memory must be self-contained—never merge unrelated information.
+### 2. Significance Gate
+SKIP if the fact lacks lasting relevance. Exclude:
+- Transient emotions, temporary states, momentary situations, one-time activities.
+- General knowledge, casual mentions, or fleeting interests.
+**Only proceed for enduring life facts: identity, relationships, career, residence, health, milestones, core preferences.**
 
-## EXAMPLES (Use CURRENT DATE/TIME provided in the user prompt)
+### 3. Deduplication Gate
+SKIP if an existing memory already captures the fact accurately and completely — even if worded differently.
+**Proceed only if the message reveals genuinely new information (names, dates, context) that enriches or corrects an existing memory.**
 
-### Example 1
+### 4. Operation Selection
+- **UPDATE preferred**: When an existing memory can be enriched with new details.
+- **CREATE**: When no existing memory covers this fact. Decompose compound facts into separate self-contained memories grouped by subject.
+- **Conservatism**: When uncertain whether something is a lasting fact or a transient mention, SKIP.
+
+## CONTENT RULES
+- **Language**: All memory content in English, first-person ("I", "My"), regardless of input language.
+- **Entity Resolution**: Resolve ALL pronouns and generic references ("he", "she", "the project") to specific named entities using conversation context before storing. Always specify relationship context ("my colleague Maria", not just "Maria").
+- **Temporal Precision**: Convert relative dates ("last month", "yesterday") to specific dates using `current_time`. Preserve history by transforming superseded facts into past-tense with defined time boundaries. Do not assign `current_time` as a start date for ongoing states without explicit temporal anchoring.
+- **Conciseness**: Max {Constants.MAX_MEMORY_SENTENCES} sentences and {Constants.MAX_MEMORY_CONTENT_CHARS} characters per memory.
+- **Cohesion**: Combine naturally related facts about the same subject (person, event, timeframe). Never merge unrelated information into one memory.
+
+## EXAMPLES
+
+### Example 1: Cohesive subject grouping
 Message: "My wife Sarah loves hiking and outdoor activities. She has an active lifestyle and enjoys rock climbing. I started this new hobby last month and it's been great."
 Memories: []
 Return: {{"ops": [{{"operation": "CREATE", "id": "", "content": "My wife Sarah has an active lifestyle and enjoys hiking, outdoor activities, and rock climbing"}}, {{"operation": "CREATE", "id": "", "content": "I started rock climbing in August 2025 as a new hobby and have been enjoying it"}}]}}
-Explanation: Sarah's lifestyle, hiking, outdoor activities, and rock climbing are naturally connected facts about the same person and combined into one cohesive memory. The user's rock climbing hobby is kept separate as it's about a different subject (the user vs. Sarah).
+Explanation: Sarah's interests are grouped as one cohesive fact about the same person. The user's own hobby is a separate subject.
 
-### Example 2
+### Example 2: Enriching existing memories with new details
 Message: "My daughter Emma just turned 12. We adopted a dog named Max for her 11th birthday. What should I give her for her 12th birthday?"
 Memories: [id:mem-002] My daughter Emma is 10 years old [noted at March 20 2024] [id:mem-101] I have a golden retriever [noted at September 20 2024]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-002", "content": "My daughter Emma turned 12 years old in September 2025"}}, {{"operation": "UPDATE", "id": "mem-101", "content": "I have a golden retriever named Max that was adopted in September 2024 as a birthday gift for my daughter Emma when she turned 11"}}]}}
-Explanation: Dog memory enriched with related context (Emma, birthday gift, age 11) and temporal anchoring (September 2024).
+Explanation: Both memories enriched with new details (age update, dog's name, adoption context). Birthday gift question is instructional — ignored.
 
-### Example 3
+### Example 3: Relocation with history preservation
 Message: "¿Me puedes recomendar buenos restaurantes de tapas en Barcelona? Me mudé aquí desde Madrid el mes pasado."
 Memories: [id:mem-005] I live in Madrid Spain [noted at June 12 2025]
 Return: {{"ops": [{{"operation": "UPDATE", "id": "mem-005", "content": "I lived in Madrid Spain until August 2025"}}, {{"operation": "CREATE", "id": "", "content": "I moved from Madrid to Barcelona Spain in August 2025"}}]}}
-Explanation: Relocation is a significant life event. The CREATE includes origin city for complete context. The request for recommendations is instructional and is ignored.
+Explanation: Relocation is a significant life event — old location converted to past-tense. Restaurant request is instructional — ignored. Content in English despite Spanish input.
 
-### Example 4
+### Example 4: Contradiction triggers DELETE + CREATE
 Message: "My wife Sofia and I just got married in August. What are some good honeymoon destinations?"
 Memories: [id:mem-008] I am single [noted at January 5 2025]
 Return: {{"ops": [{{"operation": "DELETE", "id": "mem-008", "content": ""}}, {{"operation": "CREATE", "id": "", "content": "I married Sofia in August 2025 and she is now my wife"}}]}}
-Explanation: Marriage is an enduring life event.
+Explanation: Marriage directly contradicts "single" status — DELETE the outdated fact. Honeymoon question is instructional — ignored.
 
-### Example 5
+### Example 5: Technical intent with personal data — SKIP
 Message: "Fix this Python function that calculates my age from my birthdate of March 15, 1990."
 Memories: []
 Return: {{"ops": []}}
-Explanation: The primary intent is technical (fix code). Personal data (birthdate) is provided as input for the task, not as a direct personal statement. The user is not stating "My birthday is March 15, 1990" but using it as a parameter. SKIP.
+Explanation: Primary intent is technical. Birthdate appears as a task parameter, not a personal statement.
 
-### Example 6 (Multi-Message Context)
+### Example 6: Accurate memory exists — no rephrase UPDATE
+Message: "I work at Tesla as a software engineer."
+Memories: [id:mem-010] I work as a software engineer at Tesla [noted at August 1 2025]
+Return: {{"ops": []}}
+Explanation: Existing memory captures the same fact accurately. Different word order is not new information.
+
+### Example 7: Multi-message entity resolution
 CONVERSATION:
 [1] "I had lunch with my colleague Maria yesterday at the new cafe downtown."
 [2] "She's been working on the same AI project as me for 3 months now."
 [3] "She mentioned she might be leaving the company next month."
 Memories: []
 Return: {{"ops": [{{"operation": "CREATE", "id": "", "content": "My colleague Maria and I have been working together on an AI project for 3 months as of September 2025"}}, {{"operation": "CREATE", "id": "", "content": "My colleague Maria mentioned in September 2025 that she might be leaving the company in October 2025"}}]}}
-Explanation: The pronoun "She" in messages 2 and 3 refers to "Maria" from message 1. The conversation context enables proper entity resolution. Lunch location is transient and skipped. Work relationship and departure news are significant facts.
+Explanation: "She" in messages 2-3 resolved to "Maria" from message 1. Lunch location is transient — skipped. Work relationship and departure are significant facts.
 """
 
-    MEMORY_RERANKING = f"""You are the Memory Relevance Analyzer.
+    MEMORY_RERANKING = f"""You are the Memory Relevance Selector. Choose which stored memories are relevant to personalizing the response to the user's current message.
 
-## OBJECTIVE
-Your goal is to analyze the user's message and select the most relevant memories to personalize the AI's response. Prioritize direct connections and supporting context.
+## INPUT
+JSON object containing:
+- `current_time`: Current UTC datetime for assessing temporal relevance.
+- `user_message`: The user's latest message.
+- `candidate_memories`: Memories formatted as `[id] content [noted at date]`.
 
-## INPUT FORMAT
-You will receive a JSON object containing:
-- `current_time`: The current date and time.
-- `user_message`: The latest user message.
-- `candidate_memories`: A list of potential memory strings with their IDs and noted dates.
+## OUTPUT
+Return `{{"ids": [...]}}` — memory IDs ordered by relevance (most relevant first). Return `{{"ids": []}}` when no memories are relevant.
 
-## RELEVANCE CATEGORIES
-- Direct: Memories explicitly about the query topic, people, or domain.
-- Contextual: Personal info that shapes recommendations (preferences, constraints, circumstances).
-- Supporting: General user facts that provide useful context when connected to the query topic.
+## RELEVANCE TIERS (select in this priority order)
+1. **Direct**: Explicitly about the query topic, mentioned entities, or domain.
+2. **Contextual**: Personal constraints that shape recommendations (preferences, budget, dietary needs, location, circumstances).
+3. **Supporting**: Background facts useful only when they have a clear connection to the query topic.
 
-## SELECTION FRAMEWORK
-- Temporal Relevance: Give current facts higher relevance than historical ones unless the query is about the past or historical context directly informs the current situation.
-- Hierarchy: Prioritize topic matches first (Direct), then context that enhances the response (Contextual), and finally general background (Supporting).
-- Ordering: Order IDs by relevance, most relevant first.
-- Maximum Limit: Return up to {Constants.MAX_MEMORIES_PER_RETRIEVAL} memory IDs.
-- Empty When Irrelevant: If the user's request is purely impersonal or general, return an empty list.
+## SELECTION RULES
+1. **Temporal precedence**: When memories cover the same fact or contradict each other, prefer the later `noted at` date and exclude the outdated one. Include the older one only if the query concerns history or the transition itself.
+2. **Connection required**: Every selected memory must have an identifiable link to the user's message. Do not include memories merely because they exist.
+3. **Impersonal queries**: Return an empty list for purely technical or impersonal requests where no memory would improve the response.
+4. **Limit**: At most {Constants.MAX_MEMORIES_PER_RETRIEVAL} IDs.
 
-## EXAMPLES (Use CURRENT DATE/TIME provided in the user prompt)
+## EXAMPLES
 
-### Example 1
+### Example 1: Career history relevant to emotional context
 Message: "I'm struggling with imposter syndrome at my new job. Any advice?"
 Memories: [id:mem-001] I work as a senior software engineer at Tesla [noted at September 10 2025] [id:mem-002] I started my current job 3 months ago [noted at June 15 2025] [id:mem-003] I used to work in marketing [noted at March 5 2025] [id:mem-004] I graduated with a computer science degree [noted at May 15 2020]
 Return: {{"ids": ["mem-001", "mem-002", "mem-003", "mem-004"]}}
-Explanation: Career transition history (marketing → software engineering) directly informs current imposter syndrome at new job, making historical context relevant.
+Explanation: Career transition from marketing to software engineering directly informs imposter syndrome context.
 
-### Example 2
+### Example 2: Dietary and cuisine preferences for meal recommendation
 Message: "Necesito ideas para una cena saludable y con muchas verduras esta noche."
 Memories: [id:mem-030] I am trying a vegetarian diet [noted at September 1 2025] [id:mem-031] My favorite cuisine is Italian [noted at August 15 2025] [id:mem-032] I dislike spicy food [noted at August 5 2025]
 Return: {{"ids": ["mem-030", "mem-031", "mem-032"]}}
-Explanation: Vegetarian diet is directly relevant to healthy vegetable-focused dinner. Italian cuisine and spice preference provide contextual personalization for recipe recommendations.
+Explanation: Vegetarian diet directly relevant. Cuisine preference and spice aversion shape personalized recommendations.
 
-### Example 3
+### Example 3: Interests and constraints for gift personalization
 Message: "What are some good anniversary gift ideas for my wife, Sarah?"
 Memories: [id:mem-101] My wife is named Sarah. [id:mem-102] My wife Sarah loves hiking and mystery novels. [id:mem-103] My wedding anniversary with Sarah is in October. [id:mem-104] I am on a tight budget this month. [id:mem-105] I live in Denver. [id:mem-106] I have a golden retriever named Max.
 Return: {{"ids": ["mem-102", "mem-103", "mem-101", "mem-104"]}}
-Explanation: Wife's interests (hiking, mystery novels) are direct matches for gift suggestions. Anniversary timing and budget constraints are contextual factors that shape recommendations. Location and pet lack connection to gift selection.
+Explanation: Wife's interests and anniversary timing are direct. Budget is a contextual constraint. Location and pet have no connection to gift selection.
 
-### Example 4
+### Example 4: Impersonal technical query — empty list
 Message: "I've been reading about quantum computing and I'm confused. Can you break down how quantum bits work differently from regular computer bits?"
 Memories: [id:mem-026] I work as a senior software engineer at Tesla [noted at September 15 2025] [id:mem-027] My wife is named Sarah [noted at August 5 2025]
 Return: {{"ids": []}}
-Explanation: Query seeks general technical explanation without personal context. Job and family information don't affect how quantum computing concepts should be explained.
+Explanation: Purely technical explanation request. No memory would improve the response.
 """
 
 
@@ -259,12 +271,12 @@ class Models:
                 return False
             return False
 
-    class ConsolidationResponse(BaseModel):
+    class ConsolidationResponse(StrictModel):
         """Pydantic model for memory consolidation LLM response - object containing array of memory operations."""
 
         ops: List["Models.MemoryOperation"] = Field(default_factory=list, description="List of memory operations to execute")
 
-    class MemoryRerankingResponse(BaseModel):
+    class MemoryRerankingResponse(StrictModel):
         """Pydantic model for memory reranking LLM response - object containing array of memory IDs."""
 
         ids: List[str] = Field(
@@ -274,12 +286,12 @@ class Models:
 
 
 class UnifiedCacheManager:
-    """Unified cache manager handling all cache types with user isolation and LRU eviction."""
+    """Unified cache manager handling all cache types with global LRU eviction."""
 
     def __init__(self, max_cache_size_per_type: int, max_users: int):
-        self.max_cache_size_per_type = max_cache_size_per_type
-        self.max_users = max_users
-        self.caches: OrderedDict[str, Dict[str, OrderedDict[str, Any]]] = OrderedDict()
+        self.max_total_entries = max_cache_size_per_type * max_users
+        self.caches: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self.global_lru: OrderedDict[tuple, None] = OrderedDict()
         self._lock = asyncio.Lock()
 
         self.EMBEDDING_CACHE = "embedding"
@@ -289,49 +301,53 @@ class UnifiedCacheManager:
     async def get(self, user_id: str, cache_type: str, key: str) -> Optional[Any]:
         """Get value from cache with LRU updates."""
         async with self._lock:
-            if user_id not in self.caches:
-                return None
-
-            user_cache = self.caches[user_id]
-            if cache_type not in user_cache:
-                return None
-
-            type_cache = user_cache[cache_type]
-            if key in type_cache:
-                type_cache.move_to_end(key)
-                self.caches.move_to_end(user_id)
-                return type_cache[key]
+            cache_key = (user_id, cache_type, key)
+            if cache_key in self.global_lru:
+                self.global_lru.move_to_end(cache_key)
+                return self.caches[user_id][cache_type][key]
             return None
 
     async def put(self, user_id: str, cache_type: str, key: str, value: Any) -> None:
-        """Store value in cache with size limits and LRU eviction."""
+        """Store value in cache with global LRU eviction."""
         async with self._lock:
+            cache_key = (user_id, cache_type, key)
+            if cache_key in self.global_lru:
+                self.global_lru.move_to_end(cache_key)
+                self.caches[user_id][cache_type][key] = value
+                return
+
+            if len(self.global_lru) >= self.max_total_entries:
+                oldest_key, _ = self.global_lru.popitem(last=False)
+                o_user_id, o_cache_type, o_key = oldest_key
+                del self.caches[o_user_id][o_cache_type][o_key]
+
+                if not self.caches[o_user_id][o_cache_type]:
+                    del self.caches[o_user_id][o_cache_type]
+                if not self.caches[o_user_id]:
+                    del self.caches[o_user_id]
+
+            self.global_lru[cache_key] = None
+
             if user_id not in self.caches:
-                if len(self.caches) >= self.max_users:
-                    self.caches.popitem(last=False)
                 self.caches[user_id] = {}
+            if cache_type not in self.caches[user_id]:
+                self.caches[user_id][cache_type] = {}
 
-            user_cache = self.caches[user_id]
-
-            if cache_type not in user_cache:
-                user_cache[cache_type] = OrderedDict()
-
-            type_cache = user_cache[cache_type]
-
-            if key not in type_cache and len(type_cache) >= self.max_cache_size_per_type:
-                type_cache.popitem(last=False)
-
-            type_cache[key] = value
-            type_cache.move_to_end(key)
-            self.caches.move_to_end(user_id)
+            self.caches[user_id][cache_type][key] = value
 
     async def remove(self, user_id: str, cache_type: str, key: str) -> bool:
         """Remove specific key from cache."""
         async with self._lock:
-            if user_id in self.caches and cache_type in self.caches[user_id]:
-                if key in self.caches[user_id][cache_type]:
-                    del self.caches[user_id][cache_type][key]
-                    return True
+            cache_key = (user_id, cache_type, key)
+            if cache_key in self.global_lru:
+                del self.global_lru[cache_key]
+                del self.caches[user_id][cache_type][key]
+
+                if not self.caches[user_id][cache_type]:
+                    del self.caches[user_id][cache_type]
+                if not self.caches[user_id]:
+                    del self.caches[user_id]
+                return True
         return False
 
     async def clear_user_cache(self, user_id: str, cache_type: Optional[str] = None) -> int:
@@ -340,27 +356,27 @@ class UnifiedCacheManager:
             if user_id not in self.caches:
                 return 0
 
-            user_cache = self.caches[user_id]
+            keys_to_remove = []
+            for k in self.global_lru.keys():
+                if k[0] == user_id and (cache_type is None or k[1] == cache_type):
+                    keys_to_remove.append(k)
 
-            if cache_type is None:
-                total_cleared = sum(len(type_cache) for type_cache in user_cache.values())
-                del self.caches[user_id]
-                return total_cleared
-            else:
-                if cache_type in user_cache:
-                    cleared_count = len(user_cache[cache_type])
-                    del user_cache[cache_type]
+            for k in keys_to_remove:
+                del self.global_lru[k]
+                del self.caches[k[0]][k[1]][k[2]]
 
-                    if not user_cache:
-                        del self.caches[user_id]
+                if not self.caches[k[0]][k[1]]:
+                    del self.caches[k[0]][k[1]]
+                if not self.caches[k[0]]:
+                    del self.caches[k[0]]
 
-                    return cleared_count
-                return 0
+            return len(keys_to_remove)
 
     async def clear_all_caches(self) -> None:
         """Clear all caches for all users."""
         async with self._lock:
             self.caches.clear()
+            self.global_lru.clear()
 
 
 class SkipDetector:
@@ -553,7 +569,8 @@ class SkipDetector:
         # Pattern 3: Markdown/text separators (repeated ---, ===, ___, ***)
         separator_patterns = ["---", "===", "___", "***"]
         for pattern in separator_patterns:
-            if message.count(pattern) >= 2:
+            standalone_count = sum(1 for line in lines if line.strip() == pattern)
+            if standalone_count >= 4:
                 return True
 
         # Pattern 4: Command-line patterns with context-aware detection
@@ -567,7 +584,11 @@ class SkipDetector:
                         actual_command_lines += 1
                 elif "$ " in stripped:
                     dollar_index = stripped.find("$ ")
-                    if dollar_index > 0 and stripped[dollar_index - 1] in (" ", ":", "\t"):
+                    if dollar_index > 0 and stripped[dollar_index - 1] in (
+                        " ",
+                        ":",
+                        "\t",
+                    ):
                         parts = stripped[dollar_index + 2 :].split()
                         if parts and len(parts[0]) > 0 and (parts[0].isalnum() or parts[0] in ["curl", "wget", "git", "npm", "pip", "docker"]):
                             actual_command_lines += 1
@@ -647,7 +668,13 @@ class SkipDetector:
 
         return None
 
-    async def detect_skip_reason(self, message: str, max_message_chars: int, memory_system: "Filter", user_id: Optional[str] = None) -> Optional[str]:
+    async def detect_skip_reason(
+        self,
+        message: str,
+        max_message_chars: int,
+        memory_system: "Filter",
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
         """Detect if a message should be skipped using two-stage detection: fast-path structural patterns and binary semantic classification."""
         size_issue = self.validate_message_size(message, max_message_chars)
         if size_issue:
@@ -712,6 +739,9 @@ class LLMRerankingService:
         user_message: str,
         candidate_memories: List[Dict],
         max_count: int,
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
     ) -> List[Dict]:
         """Use LLM to select most relevant memories."""
         memory_lines = self.memory_system._format_memories_for_llm(candidate_memories)
@@ -728,6 +758,9 @@ class LLMRerankingService:
         response = await self.memory_system._query_llm(
             Prompts.MEMORY_RERANKING,
             user_prompt,
+            request,
+            user,
+            model,
             response_model=Models.MemoryRerankingResponse,
         )
 
@@ -752,6 +785,9 @@ class LLMRerankingService:
         self,
         user_message: str,
         candidate_memories: List[Dict],
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
         emitter: Optional[Callable] = None,
     ) -> Tuple[List[Dict], Dict[str, Any]]:
         """Rerank candidate memories using LLM or return top semantic matches."""
@@ -777,11 +813,16 @@ class LLMRerankingService:
             )
             logger.info(f"🧠 Using LLM reranking: {decision_reason}")
 
-            selected_memories = await self._llm_select_memories(user_message, llm_candidates, max_injection)
+            selected_memories = await self._llm_select_memories(user_message, llm_candidates, max_injection, request, user, model)
 
             if not selected_memories:
                 logger.info("📭 No relevant memories after LLM analysis")
-                await self.memory_system._emit_status(emitter, "📭 No Relevant Memories Found", done=True, level=Constants.STATUS_LEVEL["Intermediate"])
+                await self.memory_system._emit_status(
+                    emitter,
+                    "📭 No Relevant Memories Found",
+                    done=True,
+                    level=Constants.STATUS_LEVEL["Intermediate"],
+                )
                 return selected_memories, analysis_info
         else:
             logger.info(f"⏩ Skipping LLM reranking: {decision_reason}")
@@ -882,6 +923,9 @@ class LLMConsolidationService:
         self,
         user_message: str,
         candidate_memories: List[Dict[str, Any]],
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
         emitter: Optional[Callable] = None,
         conversation_context: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
@@ -904,6 +948,9 @@ class LLMConsolidationService:
             self.memory_system._query_llm(
                 Prompts.MEMORY_CONSOLIDATION,
                 user_prompt,
+                request,
+                user,
+                model,
                 response_model=Models.ConsolidationResponse,
             ),
             timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
@@ -918,7 +965,7 @@ class LLMConsolidationService:
 
         if delete_ratio > Constants.MAX_DELETE_OPERATIONS_RATIO and total_operations >= Constants.MIN_OPS_FOR_DELETE_RATIO_CHECK:
             logger.warning(
-                f"⚠️ Consolidation safety: {len(delete_operations)}/{total_operations} operations are deletions ({delete_ratio*100:.1f}%) - rejecting plan"
+                f"⚠️ Consolidation safety: {len(delete_operations)}/{total_operations} operations are deletions ({delete_ratio * 100:.1f}%) - rejecting plan"
             )
             return []
 
@@ -934,7 +981,10 @@ class LLMConsolidationService:
                 logger.info(f"⏭️ Skipping duplicate UPDATE for memory {op.id}")
                 continue
 
-            if op.operation in [Models.MemoryOperationType.CREATE, Models.MemoryOperationType.UPDATE]:
+            if op.operation in [
+                Models.MemoryOperationType.CREATE,
+                Models.MemoryOperationType.UPDATE,
+            ]:
                 normalized_content = op.content.strip().lower()
                 if normalized_content in seen_contents:
                     op_type = "CREATE" if op.operation == Models.MemoryOperationType.CREATE else f"UPDATE {op.id}"
@@ -1002,7 +1052,13 @@ class LLMConsolidationService:
                 if operation_type == "UPDATE" and delete_operations is not None:
                     logger.info(f"🔄 UPDATE creates duplicate: keeping {operation.id}, deleting {duplicate_id}")
                     deduplicated.append(operation)
-                    delete_operations.append(Models.MemoryOperation(operation=Models.MemoryOperationType.DELETE, content="", id=duplicate_id))
+                    delete_operations.append(
+                        Models.MemoryOperation(
+                            operation=Models.MemoryOperationType.DELETE,
+                            content="",
+                            id=duplicate_id,
+                        )
+                    )
                 else:
                     logger.info(f"⏭️ Skipping duplicate {operation_type}: {self.memory_system._truncate_content(operation.content)} (matches {duplicate_id})")
                 continue
@@ -1011,7 +1067,12 @@ class LLMConsolidationService:
 
         return deduplicated
 
-    async def execute_memory_operations(self, operations: List[Dict[str, Any]], user_id: str, emitter: Optional[Callable] = None) -> Tuple[int, int, int, int]:
+    async def execute_memory_operations(
+        self,
+        operations: List[Dict[str, Any]],
+        user_id: str,
+        emitter: Optional[Callable] = None,
+    ) -> Tuple[int, int, int, int]:
         """Execute consolidation operations with simplified tracking."""
         if not operations:
             return 0, 0, 0, 0
@@ -1054,9 +1115,7 @@ class LLMConsolidationService:
                 user_memories,
             )
 
-        memory_contents_for_deletion = (
-            {mem.id: mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
-        )
+        memory_contents_for_deletion = {mem.id: mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
         deleted_contents_for_cache = []
 
         # Optimization: Pre-compute valid memories and their embeddings once for all dedup operations
@@ -1089,27 +1148,42 @@ class LLMConsolidationService:
             if not ops:
                 continue
 
-            batch_tasks = []
+            results = []
             for operation in ops:
-                task = self.memory_system._execute_single_operation(operation, user)
-                batch_tasks.append(task)
+                try:
+                    result = await self.memory_system._execute_single_operation(operation, user)
+                    results.append(result)
+                except Exception as e:
+                    results.append(e)
 
-            results = await asyncio.gather(*batch_tasks, return_exceptions=True)
             for idx, result in enumerate(results):
                 operation = ops[idx]
 
                 if isinstance(result, Exception):
                     failed_count += 1
-                    await self.memory_system._emit_status(emitter, f"❌ Failed {operation_type}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
+                    await self.memory_system._emit_status(
+                        emitter,
+                        f"❌ Failed {operation_type}",
+                        done=False,
+                        level=Constants.STATUS_LEVEL["Intermediate"],
+                    )
                 elif result == Models.MemoryOperationType.CREATE.value:
                     created_count += 1
                     content_preview = self.memory_system._truncate_content(operation.content)
-                    await self.memory_system._emit_status(emitter, f"📝 Created: {content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
+                    await self.memory_system._emit_status(
+                        emitter,
+                        f"📝 Created: {content_preview}",
+                        done=False,
+                        level=Constants.STATUS_LEVEL["Intermediate"],
+                    )
                 elif result == Models.MemoryOperationType.UPDATE.value:
                     updated_count += 1
                     new_content_preview = self.memory_system._truncate_content(operation.content)
                     await self.memory_system._emit_status(
-                        emitter, f"✏️ Updated: {new_content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"]
+                        emitter,
+                        f"✏️ Updated: {new_content_preview}",
+                        done=False,
+                        level=Constants.STATUS_LEVEL["Intermediate"],
                     )
 
                     old_content = memory_contents_for_deletion.get(operation.id)
@@ -1123,7 +1197,10 @@ class LLMConsolidationService:
                         deleted_contents_for_cache.append(old_content)
                     old_content_preview = self.memory_system._truncate_content(old_content) if old_content else operation.id
                     await self.memory_system._emit_status(
-                        emitter, f"🗑️ Deleted: {old_content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"]
+                        emitter,
+                        f"🗑️ Deleted: {old_content_preview}",
+                        done=False,
+                        level=Constants.STATUS_LEVEL["Intermediate"],
                     )
 
         total_executed = created_count + updated_count + deleted_count
@@ -1142,6 +1219,9 @@ class LLMConsolidationService:
         self,
         user_message: str,
         user_id: str,
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
         emitter: Optional[Callable] = None,
         cached_similarities: Optional[List[Dict[str, Any]]] = None,
         conversation_context: Optional[List[str]] = None,
@@ -1156,12 +1236,25 @@ class LLMConsolidationService:
             if self.memory_system._shutdown_event.is_set():
                 return
 
-            operations = await self.generate_consolidation_plan(user_message, candidates, emitter, conversation_context)
+            operations = await self.generate_consolidation_plan(
+                user_message,
+                candidates,
+                request,
+                user,
+                model,
+                emitter,
+                conversation_context,
+            )
             if self.memory_system._shutdown_event.is_set():
                 return
 
             if operations:
-                created_count, updated_count, deleted_count, failed_count = await self.execute_memory_operations(operations, user_id, emitter)
+                (
+                    created_count,
+                    updated_count,
+                    deleted_count,
+                    failed_count,
+                ) = await self.execute_memory_operations(operations, user_id, emitter)
 
                 duration = time.time() - start_time
                 logger.info(f"💾 Memory consolidation complete in {duration:.2f}s")
@@ -1182,7 +1275,12 @@ class LLMConsolidationService:
                     if failed_count > 0:
                         operations_summary += f" (❌ {failed_count} Failed)"
 
-                    await self.memory_system._emit_status(emitter, operations_summary, done=True, level=Constants.STATUS_LEVEL["Basic"])
+                    await self.memory_system._emit_status(
+                        emitter,
+                        operations_summary,
+                        done=True,
+                        level=Constants.STATUS_LEVEL["Basic"],
+                    )
             else:
                 duration = time.time() - start_time
                 await self.memory_system._emit_status(
@@ -1201,11 +1299,6 @@ class LLMConsolidationService:
 
 class Filter:
     """Enhanced multi-model embedding and memory filter with LRU caching."""
-
-    __current_event_emitter__: Callable[[dict], Any]
-    __user__: Dict[str, Any]
-    __model__: str
-    __request__: Request
 
     class Valves(BaseModel):
         """Configuration valves for the Memory System."""
@@ -1259,61 +1352,48 @@ class Filter:
         self._llm_reranking_service = LLMRerankingService(self)
         self._llm_consolidation_service = LLMConsolidationService(self)
 
-    async def _set_pipeline_context(
-        self,
-        __event_emitter__: Optional[Callable] = None,
-        __user__: Optional[Dict[str, Any]] = None,
-        __model__: Optional[str] = None,
-        __request__: Optional[Request] = None,
-    ) -> None:
-        """Set pipeline context parameters to avoid duplication in inlet/outlet methods."""
-        if __event_emitter__:
-            self.__current_event_emitter__ = __event_emitter__
-        if __user__:
-            self.__user__ = __user__
-        if __model__:
-            self.__model__ = __model__
-            if self.valves.memory_model:
-                logger.info(f"🤖 Using custom memory model: {__model__}")
-        if __request__:
-            self.__request__ = __request__
+    async def _initialize_system(self, request: Request) -> None:
+        if self._embedding_function is None and hasattr(request.app.state, "EMBEDDING_FUNCTION"):
+            self._embedding_function = request.app.state.EMBEDDING_FUNCTION
+            logger.info("✅ Using OpenWebUI embedding function")
 
-            if self._embedding_function is None and hasattr(__request__.app.state, "EMBEDDING_FUNCTION"):
-                self._embedding_function = __request__.app.state.EMBEDDING_FUNCTION
-                logger.info("✅ Using OpenWebUI embedding function")
+        if self._embedding_function and self._embedding_dimension is None:
+            async with self._initialization_lock:
+                if self._embedding_dimension is None:
+                    await self._detect_embedding_dimension()
 
-            if self._embedding_function and self._embedding_dimension is None:
-                async with self._initialization_lock:
-                    if self._embedding_dimension is None:
-                        await self._detect_embedding_dimension()
+        if self._embedding_function and self._skip_detector is None:
+            global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
+            embedding_engine = getattr(request.app.state.config, "RAG_EMBEDDING_ENGINE", "")
+            embedding_model = getattr(request.app.state.config, "RAG_EMBEDDING_MODEL", "")
+            cache_key = f"{embedding_engine}:{embedding_model}"
 
-            if self._embedding_function and self._skip_detector is None:
-                global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
-                embedding_engine = getattr(__request__.app.state.config, "RAG_EMBEDDING_ENGINE", "")
-                embedding_model = getattr(__request__.app.state.config, "RAG_EMBEDDING_MODEL", "")
-                cache_key = f"{embedding_engine}:{embedding_model}"
+            async with _SHARED_SKIP_DETECTOR_CACHE_LOCK:
+                if cache_key in _SHARED_SKIP_DETECTOR_CACHE:
+                    logger.info(f"♻️ Reusing cached skip detector: {cache_key}")
+                    _SHARED_SKIP_DETECTOR_CACHE.move_to_end(cache_key)
+                    self._skip_detector = _SHARED_SKIP_DETECTOR_CACHE[cache_key]
+                else:
+                    logger.info(f"🤖 Initializing skip detector: {cache_key}")
+                    embedding_fn = self._embedding_function
+                    normalize_fn = self._normalize_embedding
 
-                async with _SHARED_SKIP_DETECTOR_CACHE_LOCK:
-                    if cache_key in _SHARED_SKIP_DETECTOR_CACHE:
-                        logger.info(f"♻️ Reusing cached skip detector: {cache_key}")
-                        self._skip_detector = _SHARED_SKIP_DETECTOR_CACHE[cache_key]
-                    else:
-                        logger.info(f"🤖 Initializing skip detector: {cache_key}")
-                        embedding_fn = self._embedding_function
-                        normalize_fn = self._normalize_embedding
+                    async def embedding_wrapper(
+                        texts: Union[str, List[str]],
+                    ) -> Union[np.ndarray, List[np.ndarray]]:
+                        result = await embedding_fn(texts, prefix=None, user=None)
+                        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], (list, np.ndarray)):
+                            return [normalize_fn(emb) for emb in result]
+                        return [normalize_fn(result if isinstance(result, (list, np.ndarray)) else [result])]
 
-                        async def embedding_wrapper(
-                            texts: Union[str, List[str]],
-                        ) -> Union[np.ndarray, List[np.ndarray]]:
-                            result = await embedding_fn(texts, prefix=None, user=None)
-                            if isinstance(result, list) and len(result) > 0 and isinstance(result[0], (list, np.ndarray)):
-                                return [normalize_fn(emb) for emb in result]
-                            return [normalize_fn(result if isinstance(result, (list, np.ndarray)) else [result])]
+                    self._skip_detector = SkipDetector(embedding_wrapper)
+                    await self._skip_detector.initialize()
 
-                        self._skip_detector = SkipDetector(embedding_wrapper)
-                        await self._skip_detector.initialize()
-                        _SHARED_SKIP_DETECTOR_CACHE[cache_key] = self._skip_detector
-                        logger.info("✅ Skip detector initialized and cached")
+                    if len(_SHARED_SKIP_DETECTOR_CACHE) >= MAX_SKIP_DETECTOR_CACHE_ENTRIES:
+                        _SHARED_SKIP_DETECTOR_CACHE.popitem(last=False)
+
+                    _SHARED_SKIP_DETECTOR_CACHE[cache_key] = self._skip_detector
+                    logger.info("✅ Skip detector initialized and cached")
 
     def _truncate_content(self, content: str, max_length: Optional[int] = None) -> str:
         """Truncate content with ellipsis if needed."""
@@ -1442,8 +1522,7 @@ class Filter:
                 uncached_hashes.append(text_hash)
 
         if uncached_texts:
-            user = await asyncio.to_thread(Users.get_user_by_id, user_id) if hasattr(self, "__user__") else None
-
+            user = await asyncio.to_thread(Users.get_user_by_id, user_id)
             try:
                 raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
             except Exception as e:
@@ -1473,7 +1552,12 @@ class Filter:
             return result_embeddings
 
     async def _should_skip_memory_operations(self, user_message: str, user_id: Optional[str] = None) -> Tuple[bool, str]:
-        skip_reason = await self._skip_detector.detect_skip_reason(user_message, Constants.MAX_MESSAGE_CHARS, memory_system=self, user_id=user_id)
+        skip_reason = await self._skip_detector.detect_skip_reason(
+            user_message,
+            Constants.MAX_MESSAGE_CHARS,
+            memory_system=self,
+            user_id=user_id,
+        )
         if skip_reason:
             status_key = SkipDetector.SkipReason(skip_reason)
             return True, SkipDetector.INLET_STATUS_MESSAGES[status_key]
@@ -1487,7 +1571,12 @@ class Filter:
         logger.info(f"🔍 Evaluating {len(conversation_context)} messages for consolidation")
 
         for idx, message in enumerate(conversation_context, 1):
-            skip_reason = await self._skip_detector.detect_skip_reason(message, Constants.MAX_MESSAGE_CHARS, memory_system=self, user_id=user_id)
+            skip_reason = await self._skip_detector.detect_skip_reason(
+                message,
+                Constants.MAX_MESSAGE_CHARS,
+                memory_system=self,
+                user_id=user_id,
+            )
             if not skip_reason:  # Found at least one valuable message
                 logger.info(f"✅ Found personal content in message {idx}/{len(conversation_context)}, proceeding with consolidation")
                 return False, ""
@@ -1500,7 +1589,11 @@ class Filter:
         """Extract user message and determine if memory operations should be skipped."""
         user_message = self._get_last_user_message(body["messages"])
         if not user_message:
-            return None, True, SkipDetector.INLET_STATUS_MESSAGES[SkipDetector.SkipReason.SKIP_SIZE]
+            return (
+                None,
+                True,
+                SkipDetector.INLET_STATUS_MESSAGES[SkipDetector.SkipReason.SKIP_SIZE],
+            )
 
         should_skip, skip_reason = await self._should_skip_memory_operations(user_message, user_id)
         return user_message, should_skip, skip_reason
@@ -1608,6 +1701,9 @@ class Filter:
         self,
         user_message: str,
         user_id: str,
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
         user_memories: Optional[List] = None,
         emitter: Optional[Callable] = None,
         cached_similarities: Optional[List[Dict[str, Any]]] = None,
@@ -1617,7 +1713,10 @@ class Filter:
             retrieval_threshold = self._get_retrieval_threshold(is_consolidation=False)
             memories = [m for m in cached_similarities if m.get("relevance", 0) >= retrieval_threshold]
             logger.info(f"🔍 Using cached similarities: {len(memories)} candidates")
-            final_memories, reranking_info = await self._llm_reranking_service.rerank_memories(user_message, memories, emitter)
+            (
+                final_memories,
+                reranking_info,
+            ) = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
             self._log_retrieved_memories(final_memories, "semantic")
             return {
                 "memories": final_memories,
@@ -1630,16 +1729,29 @@ class Filter:
 
         if not user_memories:
             logger.info("📭 No memories found for user")
-            await self._emit_status(emitter, "📭 No Memories Found", done=True, level=Constants.STATUS_LEVEL["Intermediate"])
+            await self._emit_status(
+                emitter,
+                "📭 No Memories Found",
+                done=True,
+                level=Constants.STATUS_LEVEL["Intermediate"],
+            )
             return {"memories": []}
 
         memories, all_similarities = await self._compute_similarities(user_message, user_id, user_memories)
 
         if memories:
-            final_memories, reranking_info = await self._llm_reranking_service.rerank_memories(user_message, memories, emitter)
+            (
+                final_memories,
+                reranking_info,
+            ) = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
         else:
             logger.info("📭 No relevant memories found above similarity threshold")
-            await self._emit_status(emitter, "📭 No Relevant Memories Found", done=True, level=Constants.STATUS_LEVEL["Intermediate"])
+            await self._emit_status(
+                emitter,
+                "📭 No Relevant Memories Found",
+                done=True,
+                level=Constants.STATUS_LEVEL["Intermediate"],
+            )
             final_memories = memories
             reranking_info = {"llm_decision": False, "decision_reason": "no_candidates"}
 
@@ -1651,6 +1763,22 @@ class Filter:
             "reranking_info": reranking_info,
         }
 
+    def _sanitize_memory_content(self, content: str) -> str:
+        """Strip injection patterns and XML-breaking sequences from memory content."""
+        content = content.replace("\x00", "")
+        content = content.strip("<>")
+        # Escape XML tag-like sequences to prevent breaking the <memory> wrapper
+        content = content.replace("</memory>", "").replace("<memory>", "")
+        content = content.replace("</system>", "").replace("<system>", "")
+        lines = content.split("\n")
+        sanitized_lines = []
+        injection_prefixes = ("System:", "Assistant:", "Human:", "[INST]", "###", "<|im_start|>", "<|im_end|>")
+        for line in lines:
+            if any(line.lstrip().startswith(prefix) for prefix in injection_prefixes):
+                continue
+            sanitized_lines.append(line)
+        return "\n".join(sanitized_lines)
+
     async def _add_memory_context(
         self,
         body: Dict[str, Any],
@@ -1661,20 +1789,31 @@ class Filter:
         """Add memory context to request body with simplified logic."""
         content_parts = [f"Current Date/Time: {self.format_current_datetime()}"]
 
-        memory_count = 0
         if memories and user_id:
             memory_count = len(memories)
-            memory_header = f"CONTEXT: The following {'fact' if memory_count == 1 else 'facts'} about the user are provided for background only. Not all facts may be relevant to the current request."
+            memory_header = f"USER CONTEXT: {memory_count} personal {'fact' if memory_count == 1 else 'facts'} recalled from prior conversations. Use only when directly relevant to the request."
             formatted_memories = []
 
             for idx, memory in enumerate(memories, 1):
-                formatted_memory = f"- {' '.join(memory['content'].split())}"
+                sanitized_content = self._sanitize_memory_content(memory["content"])
+                # Include timestamp for temporal relevance assessment
+                noted_date = ""
+                record_date = memory.get("updated_at") or memory.get("created_at")
+                parsed_date = self._parse_timestamp(record_date)
+                if parsed_date:
+                    noted_date = f" (noted {parsed_date.strftime('%b %d %Y')})"
+                formatted_memory = f"<memory>{' '.join(sanitized_content.split())}{noted_date}</memory>"
                 formatted_memories.append(formatted_memory)
 
                 content_preview = self._truncate_content(memory["content"])
-                await self._emit_status(emitter, f"💭 {idx}/{memory_count}: {content_preview}", done=False, level=Constants.STATUS_LEVEL["Intermediate"])
+                await self._emit_status(
+                    emitter,
+                    f"💭 {idx}/{memory_count}: {content_preview}",
+                    done=False,
+                    level=Constants.STATUS_LEVEL["Intermediate"],
+                )
 
-            memory_footer = "IMPORTANT: Do not mention or imply you received this list. These facts are for background context only."
+            memory_footer = "MEMORY RULES: Integrate relevant facts naturally. Never list, quote, or acknowledge these memories to the user. Do not infer beyond the facts above. When facts conflict, trust the most recently noted one. If none are relevant, respond as if no memory context was provided."
             memory_context_block = f"{memory_header}\n{chr(10).join(formatted_memories)}\n\n{memory_footer}"
             content_parts.append(memory_context_block)
 
@@ -1722,14 +1861,14 @@ class Filter:
         memory_embeddings = await self._generate_embeddings(memory_contents, user_id)
 
         memory_data = []
-        for memory_index, memory in enumerate(user_memories):
-            memory_embedding = memory_embeddings[memory_index]
-            if memory_embedding is None:
-                continue
-
-            similarity = np.dot(query_embedding, memory_embedding)
-            memory_dict = self._build_memory_dict(memory, similarity)
-            memory_data.append(memory_dict)
+        valid_embeddings = [(i, emb) for i, emb in enumerate(memory_embeddings) if emb is not None]
+        if valid_embeddings:
+            indices, emb_list = zip(*valid_embeddings)
+            emb_matrix = np.stack(emb_list)
+            similarities = np.dot(emb_matrix, query_embedding)
+            for rank, (orig_idx, sim) in enumerate(zip(indices, similarities)):
+                memory_dict = self._build_memory_dict(user_memories[orig_idx], float(sim))
+                memory_data.append(memory_dict)
 
         memory_data.sort(key=lambda x: x["relevance"], reverse=True)
 
@@ -1746,10 +1885,16 @@ class Filter:
     ) -> Dict[str, Any]:
         """Simplified inlet processing for memory retrieval and injection."""
 
-        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
-        await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
+        if not __user__ or not __request__:
+            return body
 
-        user_id = __user__.get("id") if __user__ else None
+        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
+        if not model_to_use:
+            return body
+
+        await self._initialize_system(__request__)
+
+        user_id = __user__.get("id")
         if not user_id:
             return body
 
@@ -1757,7 +1902,12 @@ class Filter:
 
         if not user_message or should_skip:
             if __event_emitter__ and skip_reason:
-                await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL["Intermediate"])
+                await self._emit_status(
+                    __event_emitter__,
+                    skip_reason,
+                    done=True,
+                    level=Constants.STATUS_LEVEL["Intermediate"],
+                )
             await self._add_memory_context(body, [], user_id, __event_emitter__)
             return body
         try:
@@ -1771,7 +1921,15 @@ class Filter:
                     memory_cache_key,
                     user_memories,
                 )
-            retrieval_result = await self._retrieve_relevant_memories(user_message, user_id, user_memories, __event_emitter__)
+            retrieval_result = await self._retrieve_relevant_memories(
+                user_message,
+                user_id,
+                __request__,
+                __user__,
+                model_to_use,
+                user_memories,
+                __event_emitter__,
+            )
             memories = retrieval_result.get("memories", [])
             all_similarities = retrieval_result.get("all_similarities", [])
             if all_similarities:
@@ -1782,6 +1940,7 @@ class Filter:
                     cache_key,
                     all_similarities,
                 )
+
             await self._add_memory_context(body, memories, user_id, __event_emitter__)
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
@@ -1798,10 +1957,16 @@ class Filter:
     ) -> dict:
         """Simplified outlet processing for background memory consolidation."""
 
-        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
-        await self._set_pipeline_context(__event_emitter__, __user__, model_to_use, __request__)
+        if not __user__ or not __request__:
+            return body
 
-        user_id = __user__.get("id") if __user__ else None
+        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
+        if not model_to_use:
+            return body
+
+        await self._initialize_system(__request__)
+
+        user_id = __user__.get("id")
         if not user_id:
             return body
 
@@ -1813,14 +1978,28 @@ class Filter:
         should_skip_consolidation, skip_reason = await self._should_skip_consolidation(conversation_context, user_id)
 
         if should_skip_consolidation:
-            await self._emit_status(__event_emitter__, skip_reason, done=True, level=Constants.STATUS_LEVEL["Intermediate"])
+            await self._emit_status(
+                __event_emitter__,
+                skip_reason,
+                done=True,
+                level=Constants.STATUS_LEVEL["Intermediate"],
+            )
             return body
 
         retrieval_cache_key = self._cache_key(self._cache_manager.RETRIEVAL_CACHE, user_id, user_message)
         cached_similarities = await self._cache_manager.get(user_id, self._cache_manager.RETRIEVAL_CACHE, retrieval_cache_key)
 
         task = asyncio.create_task(
-            self._llm_consolidation_service.run_consolidation_pipeline(user_message, user_id, __event_emitter__, cached_similarities, conversation_context)
+            self._llm_consolidation_service.run_consolidation_pipeline(
+                user_message,
+                user_id,
+                __request__,
+                __user__,
+                model_to_use,
+                __event_emitter__,
+                cached_similarities,
+                conversation_context,
+            )
         )
         self._background_tasks.add(task)
 
@@ -1831,11 +2010,20 @@ class Filter:
                     return
                 exception = t.exception()
                 if exception:
-                    logger.error(f"❌ Background consolidation failed: {str(exception)}")
+                    logger.error(f"❌ Background consolidation failed: {str(exception)}", exc_info=exception)
+                    if __event_emitter__:
+                        asyncio.ensure_future(
+                            self._emit_status(
+                                __event_emitter__,
+                                f"❌ Background consolidation failed: {str(exception)}",
+                                done=True,
+                                level=Constants.STATUS_LEVEL["Basic"],
+                            )
+                        )
             except Exception as e:
                 if isinstance(e, asyncio.CancelledError):
                     raise
-                logger.error(f"❌ Failed to cleanup background task: {str(e)}")
+                logger.exception(f"❌ Failed to cleanup background task: {str(e)}")
 
         task.add_done_callback(safe_cleanup)
         return body
@@ -1883,12 +2071,8 @@ class Filter:
                 user_memories,
             )
 
-            memory_contents = [memory.content for memory in user_memories if len(memory.content.strip()) >= Constants.MIN_MESSAGE_CHARS]
-
-            if memory_contents:
-                await self._generate_embeddings(memory_contents, user_id)
-                duration = time.time() - start_time
-                logger.info(f"🔄 Cache refreshed: {len(memory_contents)} embeddings in {duration:.2f}s")
+            duration = time.time() - start_time
+            logger.info(f"🔄 Cache refreshed in {duration:.2f}s")
 
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
@@ -1910,7 +2094,12 @@ class Filter:
                 return Models.MemoryOperationType.CREATE.value
 
             elif operation.operation == Models.MemoryOperationType.UPDATE:
-                await self._execute_db_operation(Memories.update_memory_by_id_and_user_id, operation.id, user.id, operation.content)
+                await self._execute_db_operation(
+                    Memories.update_memory_by_id_and_user_id,
+                    operation.id,
+                    user.id,
+                    operation.content,
+                )
                 return Models.MemoryOperationType.UPDATE.value
 
             elif operation.operation == Models.MemoryOperationType.DELETE:
@@ -1926,51 +2115,44 @@ class Filter:
             logger.error(f"❌ Memory DB operation failed for {operation.operation.value}{details}: {str(e)}")
             raise
 
-    def _remove_refs_from_schema(self, schema: Dict[str, Any], schema_defs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Remove $ref references and ensure required fields for Azure OpenAI."""
-        if not isinstance(schema, dict):
+    def _inline_schema_refs(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Inline $ref references in JSON schema."""
+        if "$defs" not in schema:
             return schema
 
-        if "$ref" in schema:
-            ref_path = schema["$ref"]
-            if ref_path.startswith("#/$defs/"):
-                def_name = ref_path.split("/")[-1]
-                if schema_defs and def_name in schema_defs:
-                    return self._remove_refs_from_schema(schema_defs[def_name].copy(), schema_defs)
-            return {"type": "object"}
+        defs = schema.pop("$defs")
 
-        result = {}
-        for key, value in schema.items():
-            if key == "$defs":
-                continue
-            elif isinstance(value, dict):
-                result[key] = self._remove_refs_from_schema(value, schema_defs)
-            elif isinstance(value, list):
-                result[key] = [(self._remove_refs_from_schema(item, schema_defs) if isinstance(item, dict) else item) for item in value]
-            else:
-                result[key] = value
+        def _resolve(node: Any) -> Any:
+            if isinstance(node, dict):
+                if "$ref" in node:
+                    ref = node["$ref"]
+                    if ref.startswith("#/$defs/"):
+                        def_name = ref.split("/")[-1]
+                        if def_name in defs:
+                            return _resolve(defs[def_name].copy())
+                    raise ValueError(f"Unresolvable schema reference: {ref}")
+                return {k: _resolve(v) for k, v in node.items()}
+            elif isinstance(node, list):
+                return [_resolve(item) for item in node]
+            return node
 
-        if result.get("type") == "object" and "properties" in result:
-            result["required"] = list(result["properties"].keys())
-
-        return result
+        return _resolve(schema)
 
     async def _query_llm(
         self,
         system_prompt: str,
         user_prompt: str,
+        request: Request,
+        user: Dict[str, Any],
+        model: str,
         response_model: Optional[BaseModel] = None,
     ) -> Union[str, BaseModel]:
         """Query OpenWebUI's internal model system with Pydantic model parsing."""
-        if not hasattr(self, "__request__") or not hasattr(self, "__user__"):
-            raise RuntimeError("🔧 Pipeline interface not properly initialized. __request__ and __user__ required.")
-
-        model_to_use = self.__model__
-        if not model_to_use:
+        if not model:
             raise ValueError("🤖 No model specified for LLM operations")
 
         form_data = {
-            "model": model_to_use,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -1981,8 +2163,7 @@ class Filter:
 
         if response_model:
             raw_schema = response_model.model_json_schema()
-            schema_defs = raw_schema.get("$defs", {})
-            schema = self._remove_refs_from_schema(raw_schema, schema_defs)
+            schema = self._inline_schema_refs(raw_schema)
             schema["type"] = "object"
             form_data["response_format"] = {
                 "type": "json_schema",
@@ -1995,9 +2176,9 @@ class Filter:
 
         response = await asyncio.wait_for(
             generate_chat_completion(
-                self.__request__,
+                request,
                 form_data,
-                user=await asyncio.to_thread(Users.get_user_by_id, self.__user__["id"]),
+                user=await asyncio.to_thread(Users.get_user_by_id, user["id"]),
             ),
             timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
         )
