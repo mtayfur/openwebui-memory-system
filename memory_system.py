@@ -257,18 +257,16 @@ class Models:
                 if cleaned_content:
                     self.content = cleaned_content
                     return True
-                return False
             elif self.operation == Models.MemoryOperationType.UPDATE:
                 if op_id and op_id in existing_memory_ids and cleaned_content:
                     self.id = op_id
                     self.content = cleaned_content
                     return True
-                return False
             elif self.operation == Models.MemoryOperationType.DELETE:
                 if op_id and op_id in existing_memory_ids:
                     self.id = op_id
                     return True
-                return False
+
             return False
 
     class ConsolidationResponse(StrictModel):
@@ -298,6 +296,13 @@ class UnifiedCacheManager:
         self.RETRIEVAL_CACHE = "retrieval"
         self.MEMORY_CACHE = "memory"
 
+    def _cleanup_empty_dicts(self, user_id: str, cache_type: str) -> None:
+        # Must be called while self._lock is already held (non-reentrant).
+        if not self.caches[user_id][cache_type]:
+            del self.caches[user_id][cache_type]
+        if not self.caches[user_id]:
+            del self.caches[user_id]
+
     async def get(self, user_id: str, cache_type: str, key: str) -> Optional[Any]:
         """Get value from cache with LRU updates."""
         async with self._lock:
@@ -320,11 +325,7 @@ class UnifiedCacheManager:
                 oldest_key, _ = self.global_lru.popitem(last=False)
                 o_user_id, o_cache_type, o_key = oldest_key
                 del self.caches[o_user_id][o_cache_type][o_key]
-
-                if not self.caches[o_user_id][o_cache_type]:
-                    del self.caches[o_user_id][o_cache_type]
-                if not self.caches[o_user_id]:
-                    del self.caches[o_user_id]
+                self._cleanup_empty_dicts(o_user_id, o_cache_type)
 
             self.global_lru[cache_key] = None
 
@@ -342,11 +343,7 @@ class UnifiedCacheManager:
             if cache_key in self.global_lru:
                 del self.global_lru[cache_key]
                 del self.caches[user_id][cache_type][key]
-
-                if not self.caches[user_id][cache_type]:
-                    del self.caches[user_id][cache_type]
-                if not self.caches[user_id]:
-                    del self.caches[user_id]
+                self._cleanup_empty_dicts(user_id, cache_type)
                 return True
         return False
 
@@ -356,19 +353,13 @@ class UnifiedCacheManager:
             if user_id not in self.caches:
                 return 0
 
-            keys_to_remove = []
-            for k in self.global_lru.keys():
-                if k[0] == user_id and (cache_type is None or k[1] == cache_type):
-                    keys_to_remove.append(k)
+            keys_to_remove = [k for k in self.global_lru.keys() if k[0] == user_id and (cache_type is None or k[1] == cache_type)]
 
             for k in keys_to_remove:
+                k_user_id, k_cache_type, k_key = k
                 del self.global_lru[k]
-                del self.caches[k[0]][k[1]][k[2]]
-
-                if not self.caches[k[0]][k[1]]:
-                    del self.caches[k[0]][k[1]]
-                if not self.caches[k[0]]:
-                    del self.caches[k[0]]
+                del self.caches[k_user_id][k_cache_type][k_key]
+                self._cleanup_empty_dicts(k_user_id, k_cache_type)
 
             return len(keys_to_remove)
 
@@ -536,9 +527,9 @@ class SkipDetector:
 
     def validate_message_size(self, message: str, max_message_chars: int) -> Optional[str]:
         """Validate message size constraints."""
-        if not message or not message.strip():
+        trimmed = (message or "").strip()
+        if not trimmed:
             return SkipDetector.SkipReason.SKIP_SIZE.value
-        trimmed = message.strip()
         if len(trimmed) < Constants.MIN_MESSAGE_CHARS or len(trimmed) > max_message_chars:
             return SkipDetector.SkipReason.SKIP_SIZE.value
         return None
@@ -596,8 +587,6 @@ class SkipDetector:
                     rest = stripped[2:].strip()
                     if rest and not rest[0].isupper() and " " in rest:
                         actual_command_lines += 1
-                elif stripped.startswith("> ") and len(stripped) > 2:
-                    continue
 
             if actual_command_lines >= 1 and any(c in message for c in ["http://", "https://", " | "]):
                 return True
@@ -926,7 +915,6 @@ class LLMConsolidationService:
         request: Request,
         user: Dict[str, Any],
         model: str,
-        emitter: Optional[Callable] = None,
         conversation_context: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Generate consolidation plan using LLM with clear system/user prompt separation."""
@@ -969,7 +957,7 @@ class LLMConsolidationService:
             )
             return []
 
-        deduplicated_operations = []
+        valid_operations = []
         seen_contents = set()
         seen_update_ids = set()
 
@@ -994,9 +982,7 @@ class LLMConsolidationService:
 
             if op.operation == Models.MemoryOperationType.UPDATE:
                 seen_update_ids.add(op.id)
-            deduplicated_operations.append(op.model_dump())
-
-        valid_operations = deduplicated_operations
+            valid_operations.append(op.model_dump())
 
         if valid_operations:
             create_count = sum(1 for op in valid_operations if op.get("operation") == Models.MemoryOperationType.CREATE.value)
@@ -1025,6 +1011,8 @@ class LLMConsolidationService:
             return []
 
         deduplicated = []
+        pending_update_ids = {op.id for op in operations if getattr(op, "id", None)} if operation_type == "UPDATE" else set()
+        scheduled_delete_ids = {op.id for op in delete_operations} if delete_operations is not None else set()
 
         id_to_index = {m.id: i for i, m in enumerate(valid_memories)}
 
@@ -1050,15 +1038,21 @@ class LLMConsolidationService:
 
             if duplicate_id:
                 if operation_type == "UPDATE" and delete_operations is not None:
-                    logger.info(f"🔄 UPDATE creates duplicate: keeping {operation.id}, deleting {duplicate_id}")
                     deduplicated.append(operation)
-                    delete_operations.append(
-                        Models.MemoryOperation(
-                            operation=Models.MemoryOperationType.DELETE,
-                            content="",
-                            id=duplicate_id,
+                    if duplicate_id in pending_update_ids:
+                        logger.info(f"⏭️ UPDATE duplicate {duplicate_id} is also being updated in this batch; keeping both updates")
+                    elif duplicate_id in scheduled_delete_ids:
+                        logger.info(f"⏭️ Duplicate DELETE already scheduled for {duplicate_id}")
+                    else:
+                        logger.info(f"🔄 UPDATE creates duplicate: keeping {operation.id}, deleting {duplicate_id}")
+                        delete_operations.append(
+                            Models.MemoryOperation(
+                                operation=Models.MemoryOperationType.DELETE,
+                                content="",
+                                id=duplicate_id,
+                            )
                         )
-                    )
+                        scheduled_delete_ids.add(duplicate_id)
                 else:
                     logger.info(f"⏭️ Skipping duplicate {operation_type}: {self.memory_system._truncate_content(operation.content)} (matches {duplicate_id})")
                 continue
@@ -1096,24 +1090,14 @@ class LLMConsolidationService:
                 operation_type = operation_data.get("operation", "UNSUPPORTED")
                 content_preview = ""
                 if "content" in operation_data:
-                    content = operation_data.get("content", "")
+                    content = operation_data["content"]
                     content_preview = f" - Content: {self.memory_system._truncate_content(content, Constants.CONTENT_PREVIEW_LENGTH)}"
                 elif "id" in operation_data:
                     content_preview = f" - ID: {operation_data['id']}"
                 error_message = f"Failed {operation_type} operation{content_preview}: {str(e)}"
                 logger.error(error_message)
 
-        memory_cache_key = self.memory_system._cache_key(self.memory_system._cache_manager.MEMORY_CACHE, user_id)
-        user_memories = await self.memory_system._cache_manager.get(user_id, self.memory_system._cache_manager.MEMORY_CACHE, memory_cache_key)
-
-        if user_memories is None:
-            user_memories = await self.memory_system._get_user_memories(user_id)
-            await self.memory_system._cache_manager.put(
-                user_id,
-                self.memory_system._cache_manager.MEMORY_CACHE,
-                memory_cache_key,
-                user_memories,
-            )
+        user_memories = await self.memory_system._get_cached_user_memories(user_id)
 
         memory_contents_for_deletion = {mem.id: mem.content for mem in user_memories} if (operations_by_type["DELETE"] or operations_by_type["UPDATE"]) else {}
         deleted_contents_for_cache = []
@@ -1232,7 +1216,11 @@ class LLMConsolidationService:
             if self.memory_system._shutdown_event.is_set():
                 return
 
-            candidates = await self.collect_consolidation_candidates(user_message, user_id, cached_similarities)
+            has_multi_message_context = bool(conversation_context and len(conversation_context) > 1)
+            candidate_query = "\n".join(conversation_context) if has_multi_message_context else user_message
+            candidate_similarities = None if has_multi_message_context else cached_similarities
+
+            candidates = await self.collect_consolidation_candidates(candidate_query, user_id, candidate_similarities)
             if self.memory_system._shutdown_event.is_set():
                 return
 
@@ -1242,7 +1230,6 @@ class LLMConsolidationService:
                 request,
                 user,
                 model,
-                emitter,
                 conversation_context,
             )
             if self.memory_system._shutdown_event.is_set():
@@ -1282,7 +1269,6 @@ class LLMConsolidationService:
                         level=Constants.STATUS_LEVEL["Basic"],
                     )
             else:
-                duration = time.time() - start_time
                 await self.memory_system._emit_status(
                     emitter,
                     "✅ No Memory Updates Needed",
@@ -1334,8 +1320,6 @@ class Filter:
 
     def __init__(self):
         """Initialize the Memory System filter with production validation."""
-        global _SHARED_SKIP_DETECTOR_CACHE
-
         self.valves = self.Valves()
         self._validate_system_configuration()
 
@@ -1363,7 +1347,6 @@ class Filter:
                     await self._detect_embedding_dimension()
 
         if self._embedding_function and self._skip_detector is None:
-            global _SHARED_SKIP_DETECTOR_CACHE, _SHARED_SKIP_DETECTOR_CACHE_LOCK
             embedding_engine = getattr(request.app.state.config, "RAG_EMBEDDING_ENGINE", "")
             embedding_model = getattr(request.app.state.config, "RAG_EMBEDDING_MODEL", "")
             cache_key = f"{embedding_engine}:{embedding_model}"
@@ -1436,6 +1419,10 @@ class Filter:
         recent = self._get_recent_user_messages(messages, max_messages=1)
         return recent[0] if recent else None
 
+    def _get_model_to_use(self, body: Dict[str, Any]) -> Optional[str]:
+        """Resolve the model configured for memory operations."""
+        return self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
+
     def _validate_system_configuration(self) -> None:
         """Validate configuration and fail if invalid."""
         if self.valves.max_memories_returned <= 0:
@@ -1448,14 +1435,6 @@ class Filter:
             raise ValueError(f"📊 Invalid max consolidation context messages: {self.valves.max_consolidation_context_messages}")
 
         logger.info("✅ Configuration validated")
-
-    async def _get_embedding_cache(self, user_id: str, key: str) -> Optional[Any]:
-        """Get embedding from cache."""
-        return await self._cache_manager.get(user_id, self._cache_manager.EMBEDDING_CACHE, key)
-
-    async def _put_embedding_cache(self, user_id: str, key: str, value: Any) -> None:
-        """Store embedding in cache."""
-        await self._cache_manager.put(user_id, self._cache_manager.EMBEDDING_CACHE, key, value)
 
     def _compute_text_hash(self, text: str) -> str:
         """Compute SHA256 hash for text caching."""
@@ -1474,10 +1453,7 @@ class Filter:
 
     def _normalize_embedding(self, embedding: Union[List[float], np.ndarray]) -> np.ndarray:
         """Normalize embedding vector and ensure 1D shape."""
-        if isinstance(embedding, list):
-            embedding = np.array(embedding, dtype=np.float16)
-        else:
-            embedding = embedding.astype(np.float16)
+        embedding = np.array(embedding, dtype=np.float16)
 
         embedding = np.squeeze(embedding)
 
@@ -1511,7 +1487,7 @@ class Filter:
                 continue
 
             text_hash = self._compute_text_hash(text)
-            cached = await self._get_embedding_cache(user_id, text_hash)
+            cached = await self._cache_manager.get(user_id, self._cache_manager.EMBEDDING_CACHE, text_hash)
 
             if cached is not None:
                 result_embeddings.append(cached)
@@ -1539,7 +1515,7 @@ class Filter:
             for j, embedding in enumerate(new_embeddings):
                 original_idx = uncached_indices[j]
                 text_hash = uncached_hashes[j]
-                await self._put_embedding_cache(user_id, text_hash, embedding)
+                await self._cache_manager.put(user_id, self._cache_manager.EMBEDDING_CACHE, text_hash, embedding)
                 result_embeddings[original_idx] = embedding
 
         if is_single:
@@ -1640,6 +1616,20 @@ class Filter:
             return f"{cache_type}_{user_id}:{content_hash}"
         return f"{cache_type}_{user_id}"
 
+    async def _get_cached_user_memories(self, user_id: str) -> List:
+        """Get user memories from cache, falling back to DB fetch."""
+        memory_cache_key = self._cache_key(self._cache_manager.MEMORY_CACHE, user_id)
+        user_memories = await self._cache_manager.get(user_id, self._cache_manager.MEMORY_CACHE, memory_cache_key)
+        if user_memories is None:
+            user_memories = await self._get_user_memories(user_id)
+            await self._cache_manager.put(user_id, self._cache_manager.MEMORY_CACHE, memory_cache_key, user_memories)
+        return user_memories
+
+    def _get_memory_date(self, memory: Dict[str, Any]) -> Tuple[Any, Optional[datetime]]:
+        """Extract and parse the most recent date from a memory record."""
+        record_date = memory.get("updated_at") or memory.get("created_at")
+        return record_date, self._parse_timestamp(record_date)
+
     def _parse_timestamp(self, timestamp: Any) -> Optional[datetime]:
         """Parse various timestamp formats (epoch, ISO string, datetime) into UTC datetime."""
         if not timestamp:
@@ -1666,8 +1656,7 @@ class Filter:
         memory_lines = []
         for memory in memories:
             line = f"[{memory['id']}] {memory['content']}"
-            record_date = memory.get("updated_at") or memory.get("created_at")
-            parsed_date = self._parse_timestamp(record_date)
+            record_date, parsed_date = self._get_memory_date(memory)
             if parsed_date:
                 formatted_date = parsed_date.strftime("%b %d %Y")
                 line += f" [noted at {formatted_date}]"
@@ -1713,15 +1702,11 @@ class Filter:
             retrieval_threshold = self._get_retrieval_threshold(is_consolidation=False)
             memories = [m for m in cached_similarities if m.get("relevance", 0) >= retrieval_threshold]
             logger.info(f"🔍 Using cached similarities: {len(memories)} candidates")
-            (
-                final_memories,
-                reranking_info,
-            ) = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
+            final_memories, _ = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
             self._log_retrieved_memories(final_memories, "semantic")
             return {
                 "memories": final_memories,
                 "all_similarities": cached_similarities,
-                "reranking_info": reranking_info,
             }
 
         if user_memories is None:
@@ -1740,10 +1725,7 @@ class Filter:
         memories, all_similarities = await self._compute_similarities(user_message, user_id, user_memories)
 
         if memories:
-            (
-                final_memories,
-                reranking_info,
-            ) = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
+            final_memories, _ = await self._llm_reranking_service.rerank_memories(user_message, memories, request, user, model, emitter)
         else:
             logger.info("📭 No relevant memories found above similarity threshold")
             await self._emit_status(
@@ -1753,14 +1735,12 @@ class Filter:
                 level=Constants.STATUS_LEVEL["Intermediate"],
             )
             final_memories = memories
-            reranking_info = {"llm_decision": False, "decision_reason": "no_candidates"}
 
         self._log_retrieved_memories(final_memories, "semantic")
 
         return {
             "memories": final_memories,
             "all_similarities": all_similarities,
-            "reranking_info": reranking_info,
         }
 
     def _sanitize_memory_content(self, content: str) -> str:
@@ -1798,8 +1778,7 @@ class Filter:
                 sanitized_content = self._sanitize_memory_content(memory["content"])
                 # Include timestamp for temporal relevance assessment
                 noted_date = ""
-                record_date = memory.get("updated_at") or memory.get("created_at")
-                parsed_date = self._parse_timestamp(record_date)
+                record_date, parsed_date = self._get_memory_date(memory)
                 if parsed_date:
                     noted_date = f" (noted {parsed_date.strftime('%b %d %Y')})"
                 formatted_memory = f"<memory>{' '.join(sanitized_content.split())}{noted_date}</memory>"
@@ -1814,7 +1793,8 @@ class Filter:
                 )
 
             memory_footer = "MEMORY RULES: Integrate relevant facts naturally. Never list, quote, or acknowledge these memories to the user. Do not infer beyond the facts above. When facts conflict, trust the most recently noted one. If none are relevant, respond as if no memory context was provided."
-            memory_context_block = f"{memory_header}\n{chr(10).join(formatted_memories)}\n\n{memory_footer}"
+            formatted_memory_text = "\n".join(formatted_memories)
+            memory_context_block = f"{memory_header}\n{formatted_memory_text}\n\n{memory_footer}"
             content_parts.append(memory_context_block)
 
         memory_context = "\n\n".join(content_parts)
@@ -1866,7 +1846,7 @@ class Filter:
             indices, emb_list = zip(*valid_embeddings)
             emb_matrix = np.stack(emb_list)
             similarities = np.dot(emb_matrix, query_embedding)
-            for rank, (orig_idx, sim) in enumerate(zip(indices, similarities)):
+            for orig_idx, sim in zip(indices, similarities):
                 memory_dict = self._build_memory_dict(user_memories[orig_idx], float(sim))
                 memory_data.append(memory_dict)
 
@@ -1888,7 +1868,7 @@ class Filter:
         if not __user__ or not __request__:
             return body
 
-        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
+        model_to_use = self._get_model_to_use(body)
         if not model_to_use:
             return body
 
@@ -1900,8 +1880,8 @@ class Filter:
 
         user_message, should_skip, skip_reason = await self._process_user_message(body, user_id)
 
-        if not user_message or should_skip:
-            if __event_emitter__ and skip_reason:
+        if should_skip:
+            if skip_reason:
                 await self._emit_status(
                     __event_emitter__,
                     skip_reason,
@@ -1911,16 +1891,7 @@ class Filter:
             await self._add_memory_context(body, [], user_id, __event_emitter__)
             return body
         try:
-            memory_cache_key = self._cache_key(self._cache_manager.MEMORY_CACHE, user_id)
-            user_memories = await self._cache_manager.get(user_id, self._cache_manager.MEMORY_CACHE, memory_cache_key)
-            if user_memories is None:
-                user_memories = await self._get_user_memories(user_id)
-                await self._cache_manager.put(
-                    user_id,
-                    self._cache_manager.MEMORY_CACHE,
-                    memory_cache_key,
-                    user_memories,
-                )
+            user_memories = await self._get_cached_user_memories(user_id)
             retrieval_result = await self._retrieve_relevant_memories(
                 user_message,
                 user_id,
@@ -1960,7 +1931,7 @@ class Filter:
         if not __user__ or not __request__:
             return body
 
-        model_to_use = self.valves.memory_model or (body.get("model") if isinstance(body, dict) else None)
+        model_to_use = self._get_model_to_use(body)
         if not model_to_use:
             return body
 
@@ -2093,7 +2064,7 @@ class Filter:
                 await self._execute_db_operation(Memories.insert_new_memory, user.id, operation.content)
                 return Models.MemoryOperationType.CREATE.value
 
-            elif operation.operation == Models.MemoryOperationType.UPDATE:
+            if operation.operation == Models.MemoryOperationType.UPDATE:
                 await self._execute_db_operation(
                     Memories.update_memory_by_id_and_user_id,
                     operation.id,
@@ -2102,7 +2073,7 @@ class Filter:
                 )
                 return Models.MemoryOperationType.UPDATE.value
 
-            elif operation.operation == Models.MemoryOperationType.DELETE:
+            if operation.operation == Models.MemoryOperationType.DELETE:
                 await self._execute_db_operation(Memories.delete_memory_by_id_and_user_id, operation.id, user.id)
                 return Models.MemoryOperationType.DELETE.value
         except Exception as e:
@@ -2188,19 +2159,18 @@ class Filter:
         else:
             response_data = response
 
-        if isinstance(response_data, dict) and "choices" in response_data and isinstance(response_data["choices"], list) and len(response_data["choices"]) > 0:
-            first_choice = response_data["choices"][0]
-            if (
-                isinstance(first_choice, dict)
-                and "message" in first_choice
-                and isinstance(first_choice["message"], dict)
-                and "content" in first_choice["message"]
-            ):
-                content = first_choice["message"]["content"]
-            else:
-                raise ValueError("🤖 Invalid response structure: missing content in message")
-        else:
+        if not (
+            isinstance(response_data, dict) and "choices" in response_data and isinstance(response_data["choices"], list) and len(response_data["choices"]) > 0
+        ):
             raise ValueError(f"🤖 Unexpected LLM response format: {response_data}")
+
+        first_choice = response_data["choices"][0]
+        if not (
+            isinstance(first_choice, dict) and "message" in first_choice and isinstance(first_choice["message"], dict) and "content" in first_choice["message"]
+        ):
+            raise ValueError("🤖 Invalid response structure: missing content in message")
+
+        content = first_choice["message"]["content"]
 
         if response_model:
             try:
