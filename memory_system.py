@@ -1,10 +1,10 @@
 """
 title: Memory System
 description: A semantic memory management system for Open WebUI that consolidates, deduplicates, and retrieves personalized user memories using LLM operations.
-version: 1.3.0
+version: 1.4.0
 authors: https://github.com/mtayfur
 license: Apache-2.0
-required_open_webui_version: 0.6.40
+required_open_webui_version: 0.9.0
 """
 
 import asyncio

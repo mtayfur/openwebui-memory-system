@@ -15,7 +15,7 @@
 - `outlet` must return immediately, reuse `RETRIEVAL_CACHE`, and launch consolidation with `asyncio.create_task()`.
 - If `__user__` or `__request__` is missing, return `body`.
 - `request.app.state.EMBEDDING_FUNCTION` is loaded lazily in `_initialize_system()`.
-- Module docstring fields are machine-parsed. Keep `title: Memory System`, `version: 1.3.0`, and `required_open_webui_version: 0.6.40` accurate.
+- Module docstring fields are machine-parsed. Keep `title: Memory System`, `version: 1.4.0`, and `required_open_webui_version: 0.9.0` accurate.
 
 ## Runtime-Only Imports
 
