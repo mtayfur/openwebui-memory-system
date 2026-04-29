@@ -1078,7 +1078,7 @@ class LLMConsolidationService:
             return 0, 0, 0, 0
 
         user = await asyncio.wait_for(
-            asyncio.to_thread(Users.get_user_by_id, user_id),
+            Users.get_user_by_id(user_id),
             timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
         )
 
@@ -1522,7 +1522,7 @@ class Filter:
                 uncached_hashes.append(text_hash)
 
         if uncached_texts:
-            user = await asyncio.to_thread(Users.get_user_by_id, user_id)
+            user = await Users.get_user_by_id(user_id)
             try:
                 raw_embeddings = await self._embedding_function(uncached_texts, prefix=None, user=user)
             except Exception as e:
@@ -1601,7 +1601,7 @@ class Filter:
     async def _get_user_memories(self, user_id: str) -> List:
         """Get user memories with timeout handling."""
         memories = await asyncio.wait_for(
-            asyncio.to_thread(Memories.get_memories_by_user_id, user_id),
+            Memories.get_memories_by_user_id(user_id),
             timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
         )
         return [m for m in memories if m.content] if memories else []
@@ -2080,9 +2080,9 @@ class Filter:
             raise RuntimeError(f"🧹 Failed to refresh cache for user {user_id} after {(time.time() - start_time):.2f}s: {str(e)}")
 
     async def _execute_db_operation(self, db_func: Callable, *args) -> None:
-        """Execute database operation with timeout and threading."""
+        """Execute database operation with timeout."""
         await asyncio.wait_for(
-            asyncio.to_thread(db_func, *args),
+            db_func(*args),
             timeout=Constants.DATABASE_OPERATION_TIMEOUT_SEC,
         )
 
@@ -2178,7 +2178,7 @@ class Filter:
             generate_chat_completion(
                 request,
                 form_data,
-                user=await asyncio.to_thread(Users.get_user_by_id, user["id"]),
+                user=await Users.get_user_by_id(user["id"]),
             ),
             timeout=Constants.LLM_CONSOLIDATION_TIMEOUT_SEC,
         )
